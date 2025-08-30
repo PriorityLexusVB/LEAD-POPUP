@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { customerName, vehicle, comments } = body;
 
-    if (!customerName || !vehicle || !comments) {
+    if (!customerName || !vehicle) {
       return NextResponse.json({ success: false, message: 'Missing required fields.' }, { status: 400, headers: CORS_HEADERS });
     }
 
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       id: `msg-${Date.now()}`,
       customerName,
       vehicle,
-      comments,
+      comments: comments || 'No comments provided.',
       status: 'new' as const,
       timestamp: Date.now(),
     };
@@ -41,7 +41,11 @@ export async function POST(request: Request) {
     leads.unshift(newLead);
     
     // Also send to Google Sheet
-    await addLeadToSheet(newLead);
+    await addLeadToSheet({
+        customerName: newLead.customerName,
+        vehicle: newLead.vehicle,
+        comments: newLead.comments
+    });
 
     return NextResponse.json({ success: true, lead: newLead }, { headers: CORS_HEADERS });
   } catch (error) {
