@@ -1,4 +1,3 @@
-import { mockLeads } from '@/lib/mock-data';
 import LeadList from '@/components/app/LeadList';
 import { Mail } from 'lucide-react';
 
@@ -18,7 +17,7 @@ export default function Home() {
         </div>
       </header>
       <main className="container mx-auto p-4 md:p-6">
-        <LeadList initialLeads={mockLeads} />
+        <LeadList />
       </main>
     </div>
   );

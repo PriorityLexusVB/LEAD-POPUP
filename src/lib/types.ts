@@ -9,3 +9,15 @@ export type Lead = {
   suggestion?: string;
   timestamp: number;
 };
+
+export type RawLead = {
+  raw: string;
+  receivedAt: {
+    seconds: number;
+    nanoseconds: number;
+  };
+  source: string;
+  headers: {
+    contentType: string | null;
+  }
+}
