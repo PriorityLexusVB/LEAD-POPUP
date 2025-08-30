@@ -1,6 +1,8 @@
 import { mockLeads } from '@/lib/mock-data';
 import LeadList from '@/components/app/LeadList';
-import { Mail } from 'lucide-react';
+import { Mail, PlusCircle } from 'lucide-react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 
 export default function Home() {
   return (
@@ -15,6 +17,12 @@ export default function Home() {
               Priority Lead Sync
             </h1>
           </div>
+          <Button asChild>
+            <Link href="/add-lead">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Add New Lead
+            </Link>
+          </Button>
         </div>
       </header>
       <main className="container mx-auto p-4 md:p-6">
