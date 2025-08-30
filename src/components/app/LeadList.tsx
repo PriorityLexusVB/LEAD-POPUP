@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { type Lead } from '@/lib/types';
 import LeadCard from './LeadCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {isPermissionGranted, requestPermission, sendNotification} from '@tauri-apps/api/notification';
 
 type LeadListProps = {
   initialLeads: Lead[];
@@ -12,12 +13,36 @@ type LeadListProps = {
 export default function LeadList({ initialLeads }: LeadListProps) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads.sort((a, b) => b.timestamp - a.timestamp));
 
+  useEffect(() => {
+    const requestNotificationPermission = async () => {
+      const permissionGranted = await isPermissionGranted();
+      if (!permissionGranted) {
+        const permission = await requestPermission();
+        if (permission !== 'granted') {
+          console.log('Notification permission was not granted.');
+        }
+      }
+    };
+
+    requestNotificationPermission();
+  }, []);
+
   const updateLead = (updatedLead: Lead) => {
     setLeads(leads.map(lead => (lead.id === updatedLead.id ? updatedLead : lead)));
   };
 
   const newLeads = leads.filter(lead => lead.status === 'new');
   const handledLeads = leads.filter(lead => lead.status === 'handled');
+
+  useEffect(() => {
+    const newLead = newLeads.find(lead => (Date.now() - lead.timestamp) < 2000);
+    if(newLead){
+      sendNotification({
+        title: `New Lead: ${newLead.customerName}`,
+        body: `Interested in: ${newLead.vehicle}`,
+      });
+    }
+  }, [newLeads]);
 
   return (
     <Tabs defaultValue="new" className="w-full">
