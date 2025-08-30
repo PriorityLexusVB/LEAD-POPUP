@@ -4,7 +4,7 @@
 import { generateAiSuggestionsForLead } from '@/ai/flows/generate-ai-suggestions-for-lead';
 import type { GenerateAiSuggestionsForLeadInput } from '@/ai/flows/generate-ai-suggestions-for-lead';
 
-type AddLeadInput = {
+type AddLeadToSheetInput = {
     customerName: string;
     vehicle: string;
     comments: string;
@@ -15,7 +15,7 @@ type ActionResponse = {
     message?: string;
 };
 
-export async function addLead(input: AddLeadInput): Promise<ActionResponse> {
+export async function addLeadToSheet(input: AddLeadToSheetInput): Promise<ActionResponse> {
   const url = process.env.GOOGLE_SCRIPT_URL;
   if (!url) {
     console.error('Google Script URL is not configured in .env');
@@ -29,9 +29,6 @@ export async function addLead(input: AddLeadInput): Promise<ActionResponse> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(input),
-      // As Google Apps Script can sometimes be slow to respond, redirecting might cause issues.
-      // It's better to handle the response directly.
-      // redirect: 'follow', // This is not needed and can cause issues with CORS
     });
 
     const result = await response.json();

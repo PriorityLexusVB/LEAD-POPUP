@@ -5,13 +5,29 @@ import { type Lead } from '@/lib/types';
 import LeadCard from './LeadCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {isPermissionGranted, requestPermission, sendNotification} from '@tauri-apps/api/notification';
+import useSWR from 'swr';
 
-type LeadListProps = {
-  initialLeads: Lead[];
-};
+const fetcher = (url: string) => fetch(url).then(res => res.json());
 
-export default function LeadList({ initialLeads }: LeadListProps) {
+export default function LeadList({ initialLeads }: { initialLeads: Lead[] }) {
+  const { data, error } = useSWR('/api/leads', fetcher, { refreshInterval: 5000 });
   const [leads, setLeads] = useState<Lead[]>(initialLeads.sort((a, b) => b.timestamp - a.timestamp));
+
+  useEffect(() => {
+    if (data?.leads) {
+      // Basic merge to avoid duplicates and keep client-side updates
+      setLeads(prevLeads => {
+        const leadMap = new Map(prevLeads.map(l => [l.id, l]));
+        data.leads.forEach((l: Lead) => {
+            if (!leadMap.has(l.id)) {
+                leadMap.set(l.id, l);
+            }
+        });
+        return Array.from(leadMap.values()).sort((a, b) => b.timestamp - a.timestamp);
+      });
+    }
+  }, [data]);
+
 
   useEffect(() => {
     const requestNotificationPermission = async () => {
@@ -35,14 +51,19 @@ export default function LeadList({ initialLeads }: LeadListProps) {
   const handledLeads = leads.filter(lead => lead.status === 'handled');
 
   useEffect(() => {
-    const newLead = newLeads.find(lead => (Date.now() - lead.timestamp) < 2000);
-    if(newLead){
-      sendNotification({
-        title: `New Lead: ${newLead.customerName}`,
-        body: `Interested in: ${newLead.vehicle}`,
-      });
+    if (data?.leads) {
+      const latestLead = data.leads[0];
+      const fiveSecondsAgo = Date.now() - 5000;
+      if (latestLead && latestLead.timestamp > fiveSecondsAgo) {
+         sendNotification({
+            title: `New Lead: ${latestLead.customerName}`,
+            body: `Interested in: ${latestLead.vehicle}`,
+         });
+      }
     }
-  }, [newLeads]);
+  }, [data]);
+
+  if (error) return <div className="col-span-full flex h-64 flex-col items-center justify-center rounded-lg border border-dashed"><p className="text-destructive-foreground">Failed to load leads.</p></div>
 
   return (
     <Tabs defaultValue="new" className="w-full">
