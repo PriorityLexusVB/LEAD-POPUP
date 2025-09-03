@@ -4,19 +4,26 @@ const admin = require('firebase-admin');
 const express = require('express');
 
 admin.initializeApp();
-const db = admin.firestore('leads');
+const db = admin.firestore();
 
 const app = express();
 app.use(express.text({ type: '*/*', limit: '10mb' }));
 
 function parseRawEmail(raw) {
   try {
-    const timestampMatch = raw.match(/Date:\s*(.*)/);
+    // Find the start of the XML content
+    const xmlStartIndex = raw.indexOf('<');
+    if (xmlStartIndex === -1) {
+      throw new Error('No XML content found in the email body.');
+    }
+    const xmlContent = raw.substring(xmlStartIndex);
+
+    const timestampMatch = xmlContent.match(/<creationdate[^>]*>(.*?)<\/creationdate>/s);
     const timestamp = timestampMatch ? new Date(timestampMatch[1]).getTime() : Date.now();
 
-    const customerNameMatch = raw.match(/<customer[^>]*>.*?<name>(.*?)<\/name>.*?<\/customer>/s);
-    const vehicleMatch = raw.match(/<vehicle[^>]*>.*?<make>(.*?)<\/make>.*?<model>(.*?)<\/model>.*?<\/vehicle>/s);
-    const commentsMatch = raw.match(/<comments>(.*?)<\/comments>/s);
+    const customerNameMatch = xmlContent.match(/<customer[^>]*>.*?<name part="full">(.*?)<\/name>.*?<\/customer>/s);
+    const vehicleMatch = xmlContent.match(/<vehicle[^>]*>.*?<make>(.*?)<\/make>.*?<model>(.*?)<\/model>.*?<\/vehicle>/s);
+    const commentsMatch = xmlContent.match(/<comments>(.*?)<\/comments>/s);
 
     const customerName = customerNameMatch ? customerNameMatch[1].trim() : "Name not found";
     const vehicle = vehicleMatch ? `${vehicleMatch[1].trim()} ${vehicleMatch[2].trim()}` : "Vehicle not specified";
