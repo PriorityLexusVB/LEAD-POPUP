@@ -9,24 +9,37 @@ import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 
 function parseRawEmail(raw: string, id: string): Lead {
-    const customerNameMatch = raw.match(/Name:\s*(.*)/);
-    const vehicleMatch = raw.match(/Vehicle:\s*(.*)/);
-    const commentsMatch = raw.match(/Comments:\s*([\s\S]*)/);
+  // Helper to extract content from a single XML tag
+  const extractValue = (tagName: string) => {
+    const regex = new RegExp(`<${tagName}>(?:<!\\[CDATA\\[)?(.*?)(?:\\]\\]>)?<\\/${tagName}>`, 's');
+    const match = raw.match(regex);
+    return match ? match[1].trim() : '';
+  };
+  
+  // Helper to extract attribute from a tag
+  const extractAttribute = (tagName: string, attributeName: string) => {
+    const regex = new RegExp(`<${tagName}[^>]*${attributeName}="([^"]*)"`);
+    const match = raw.match(regex);
+    return match ? match[1].trim() : '';
+  }
 
-    // A simple way to get a consistent timestamp from the email Date header
-    const dateMatch = raw.match(/Date:\s*(.*)/);
-    const timestamp = dateMatch ? new Date(dateMatch[1]).getTime() : Date.now();
+  const customerName = extractValue('name');
+  const vehicleDescription = extractValue('description');
+  const comments = extractValue('comments');
 
-    return {
-        id,
-        customerName: customerNameMatch ? customerNameMatch[1].trim() : 'N/A',
-        vehicle: vehicleMatch ? vehicleMatch[1].trim() : 'N/A',
-        comments: commentsMatch ? commentsMatch[1].trim() : 'No comments provided',
-        status: 'new', // All incoming leads are new
-        timestamp,
-    };
+  // A simple way to get a consistent timestamp from the email Date header
+  const dateMatch = raw.match(/Date:\\s*(.*)/);
+  const timestamp = dateMatch ? new Date(dateMatch[1]).getTime() : Date.now();
+
+  return {
+    id,
+    customerName: customerName || 'N/A',
+    vehicle: vehicleDescription || 'N/A',
+    comments: comments || 'No comments provided',
+    status: 'new', // All incoming leads are new
+    timestamp,
+  };
 }
-
 
 export default function LeadList() {
   const [leads, setLeads] = useState<Lead[]>([]);
