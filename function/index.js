@@ -5,7 +5,7 @@ const express = require('express');
 const { parseStringPromise } = require('xml2js');
 
 admin.initializeApp();
-const db = admin.firestore();
+const db = admin.firestore('leads');
 
 const app = express();
 app.use(express.text({ type: '*/*', limit: '10mb' }));
