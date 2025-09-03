@@ -1,3 +1,4 @@
+
 const { onRequest } = require('firebase-functions/v2/onRequest');
 const admin = require('firebase-admin');
 const express = require('express');
@@ -10,13 +11,14 @@ app.use(express.text({ type: '*/*', limit: '10mb' }));
 
 app.post('/', async (req, res) => {
   try {
-    const provided = req.get('X-Webhook-Secret');
+    // Read the secret from the URL query parameter
+    const provided = req.query.secret;
     const expected = process.env.GMAIL_WEBHOOK_SECRET;
 
     console.log('Received webhook request.');
 
     if (!provided) {
-        console.warn('Webhook secret was not provided.');
+        console.warn('Webhook secret was not provided in the URL query.');
         return res.status(401).send('Invalid webhook secret: Not provided');
     }
     
