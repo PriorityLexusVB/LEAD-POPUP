@@ -11,14 +11,13 @@ app.use(express.text({ type: '*/*', limit: '10mb' }));
 
 app.post('/', async (req, res) => {
   try {
-    // Read the secret from the URL query parameter
-    const provided = req.query.secret;
+    const provided = req.get('X-Webhook-Secret');
     const expected = process.env.GMAIL_WEBHOOK_SECRET;
 
     console.log('Received webhook request.');
 
     if (!provided) {
-        console.warn('Webhook secret was not provided in the URL query.');
+        console.warn('Webhook secret was not provided in header.');
         return res.status(401).send('Invalid webhook secret: Not provided');
     }
     
