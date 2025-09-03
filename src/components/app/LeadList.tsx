@@ -12,16 +12,36 @@ function parseRawEmail(raw: string, id: string): Lead {
   const timestampMatch = raw.match(/Date:\s*(.*)/);
   const timestamp = timestampMatch ? new Date(timestampMatch[1]).getTime() : Date.now();
 
-  // For debugging, we will display the raw content.
-  // We can add parsing logic back in once we confirm data is flowing.
-  return {
-    id,
-    customerName: `Lead ID: ${id}`,
-    vehicle: 'Raw Email Data',
-    comments: raw, // Display the raw XML content directly
-    status: 'new',
-    timestamp,
-  };
+  try {
+    // Attempt to parse XML fields
+    const customerNameMatch = raw.match(/<customer[^>]*>.*?<name>(.*?)<\/name>.*?<\/customer>/s);
+    const vehicleMatch = raw.match(/<vehicle[^>]*>.*?<make>(.*?)<\/make>.*?<model>(.*?)<\/model>.*?<\/vehicle>/s);
+    const commentsMatch = raw.match(/<comments>(.*?)<\/comments>/s);
+
+    const customerName = customerNameMatch ? customerNameMatch[1].trim() : `Lead ID: ${id}`;
+    const vehicle = vehicleMatch ? `${vehicleMatch[1].trim()} ${vehicleMatch[2].trim()}` : "Vehicle not specified";
+    const comments = commentsMatch ? commentsMatch[1].trim() : "No comments provided.";
+
+    return {
+      id,
+      customerName,
+      vehicle,
+      comments,
+      status: 'new',
+      timestamp,
+    };
+  } catch (e) {
+    console.error(`Failed to parse XML for lead ${id}, displaying raw content.`, e);
+    // Fallback for any parsing errors
+    return {
+      id,
+      customerName: `Unparsed Lead ID: ${id}`,
+      vehicle: 'Raw Email Data',
+      comments: raw,
+      status: 'new',
+      timestamp,
+    };
+  }
 }
 
 export default function LeadList() {
@@ -29,7 +49,7 @@ export default function LeadList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'email_leads'));
+    const q = query(collection(db, 'email_leads'), orderBy('receivedAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const newLeads: Lead[] = [];
