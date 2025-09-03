@@ -1,3 +1,4 @@
+
 export type LeadStatus = 'new' | 'handled';
 
 export type Lead = {
@@ -8,6 +9,11 @@ export type Lead = {
   status: LeadStatus;
   suggestion?: string;
   timestamp: number;
+  receivedAt: {
+    seconds: number;
+    nanoseconds: number;
+  };
+  source: string;
 };
 
 export type RawLead = {

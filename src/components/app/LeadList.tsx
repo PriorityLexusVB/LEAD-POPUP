@@ -1,48 +1,13 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
-import { type Lead, type RawLead } from '@/lib/types';
+import { type Lead } from '@/lib/types';
 import LeadCard from './LeadCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/api/notification';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
-
-function parseRawEmail(raw: string, id: string): Lead {
-  const timestampMatch = raw.match(/Date:\s*(.*)/);
-  const timestamp = timestampMatch ? new Date(timestampMatch[1]).getTime() : Date.now();
-
-  try {
-    // Attempt to parse XML fields
-    const customerNameMatch = raw.match(/<customer[^>]*>.*?<name>(.*?)<\/name>.*?<\/customer>/s);
-    const vehicleMatch = raw.match(/<vehicle[^>]*>.*?<make>(.*?)<\/make>.*?<model>(.*?)<\/model>.*?<\/vehicle>/s);
-    const commentsMatch = raw.match(/<comments>(.*?)<\/comments>/s);
-
-    const customerName = customerNameMatch ? customerNameMatch[1].trim() : `Lead ID: ${id}`;
-    const vehicle = vehicleMatch ? `${vehicleMatch[1].trim()} ${vehicleMatch[2].trim()}` : "Vehicle not specified";
-    const comments = commentsMatch ? commentsMatch[1].trim() : "No comments provided.";
-
-    return {
-      id,
-      customerName,
-      vehicle,
-      comments,
-      status: 'new',
-      timestamp,
-    };
-  } catch (e) {
-    console.error(`Failed to parse XML for lead ${id}, displaying raw content.`, e);
-    // Fallback for any parsing errors
-    return {
-      id,
-      customerName: `Unparsed Lead ID: ${id}`,
-      vehicle: 'Raw Email Data',
-      comments: raw,
-      status: 'new',
-      timestamp,
-    };
-  }
-}
 
 export default function LeadList() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -54,11 +19,8 @@ export default function LeadList() {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const newLeads: Lead[] = [];
       querySnapshot.forEach((doc) => {
-        const data = doc.data() as RawLead;
-        if (data.raw) {
-          const parsedLead = parseRawEmail(data.raw, doc.id);
-          newLeads.push(parsedLead);
-        }
+        const data = doc.data();
+        newLeads.push({ id: doc.id, ...data } as Lead);
       });
 
       setLeads(currentLeads => {
