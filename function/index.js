@@ -1,4 +1,4 @@
-const { onRequest } = require('firebase-functions/v2/https');
+const { onRequest } = require('firebase-functions/v2/onRequest');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const express = require('express');
@@ -15,10 +15,20 @@ app.post('/', async (req, res) => {
   try {
     const provided = req.get('X-Webhook-Secret');
     const expected = GMAIL_WEBHOOK_SECRET.value();
-    if (!provided || provided !== expected) {
-        console.warn('Invalid webhook secret provided.');
-        return res.status(401).send('Invalid webhook secret');
+
+    console.log('Received webhook request.');
+
+    if (!provided) {
+        console.warn('Webhook secret was not provided.');
+        return res.status(401).send('Invalid webhook secret: Not provided');
     }
+    
+    if (provided !== expected) {
+        console.warn(`Invalid webhook secret provided. Expected: "${expected}", but got: "${provided}"`);
+        return res.status(401).send('Invalid webhook secret: Mismatch');
+    }
+
+    console.log('Webhook secret validated successfully.');
 
     const raw = req.body;
     if (!raw || typeof raw !== 'string') {
@@ -26,17 +36,19 @@ app.post('/', async (req, res) => {
         return res.status(400).send('Missing raw body');
     }
 
+    console.log('Writing to email_leads collection...');
     await db.collection('email_leads').add({
       raw,
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
       source: 'gmail-webhook',
       headers: { contentType: req.get('content-type') || null }
     });
+    console.log('Successfully wrote to Firestore.');
 
     return res.status(200).send('OK');
   } catch (e) {
-    console.error('receiveEmailLead error:', e);
-    return res.status(500).send('Internal error');
+    console.error('receiveEmailLead critical error:', e);
+    return res.status(500).send('Internal server error');
   }
 });
 

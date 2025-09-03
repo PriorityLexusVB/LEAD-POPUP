@@ -6,37 +6,20 @@ import LeadCard from './LeadCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/api/notification';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 
 function parseRawEmail(raw: string, id: string): Lead {
-  // Helper to extract content from a single XML tag
-  const extractValue = (tagName: string) => {
-    const regex = new RegExp(`<${tagName}>(?:<!\\[CDATA\\[)?(.*?)(?:\\]\\]>)?<\\/${tagName}>`, 's');
-    const match = raw.match(regex);
-    return match ? match[1].trim() : '';
-  };
-  
-  // Helper to extract attribute from a tag
-  const extractAttribute = (tagName: string, attributeName: string) => {
-    const regex = new RegExp(`<${tagName}[^>]*${attributeName}="([^"]*)"`);
-    const match = raw.match(regex);
-    return match ? match[1].trim() : '';
-  }
+  const timestampMatch = raw.match(/Date:\s*(.*)/);
+  const timestamp = timestampMatch ? new Date(timestampMatch[1]).getTime() : Date.now();
 
-  const customerName = extractValue('name');
-  const vehicleDescription = extractValue('description');
-  const comments = extractValue('comments');
-
-  // A simple way to get a consistent timestamp from the email Date header
-  const dateMatch = raw.match(/Date:\\s*(.*)/);
-  const timestamp = dateMatch ? new Date(dateMatch[1]).getTime() : Date.now();
-
+  // For debugging, we will display the raw content.
+  // We can add parsing logic back in once we confirm data is flowing.
   return {
     id,
-    customerName: customerName || 'N/A',
-    vehicle: vehicleDescription || 'N/A',
-    comments: comments || 'No comments provided',
-    status: 'new', // All incoming leads are new
+    customerName: `Lead ID: ${id}`,
+    vehicle: 'Raw Email Data',
+    comments: raw, // Display the raw XML content directly
+    status: 'new',
     timestamp,
   };
 }
@@ -50,22 +33,18 @@ export default function LeadList() {
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const newLeads: Lead[] = [];
-      const seenIds = new Set();
       querySnapshot.forEach((doc) => {
         const data = doc.data() as RawLead;
         if (data.raw) {
           const parsedLead = parseRawEmail(data.raw, doc.id);
-          if (!seenIds.has(parsedLead.id)) {
-            newLeads.push(parsedLead);
-            seenIds.add(parsedLead.id)
-          }
+          newLeads.push(parsedLead);
         }
       });
+
       setLeads(currentLeads => {
         const leadMap = new Map(currentLeads.map(l => [l.id, l]));
         newLeads.forEach(l => {
-             // Check if the lead is new based on timestamp (e.g., within last 5 seconds)
-            const isNew = l.timestamp > Date.now() - 5000;
+             const isNew = l.timestamp > Date.now() - 10000; // 10 second window
             const existingLead = leadMap.get(l.id);
 
             if (!existingLead && isNew) {
@@ -76,7 +55,7 @@ export default function LeadList() {
             }
            leadMap.set(l.id, {...(existingLead || {}), ...l});
         });
-        // Sort leads on the client-side
+        
         return Array.from(leadMap.values()).sort((a,b) => b.timestamp - a.timestamp);
       });
       setError(null);
@@ -85,7 +64,6 @@ export default function LeadList() {
       setError("Failed to connect to Firestore. Please check your connection and Firebase setup.");
     });
 
-    // Cleanup subscription on unmount
     return () => unsubscribe();
   }, []);
 
@@ -99,7 +77,6 @@ export default function LeadList() {
         }
       }
     };
-
     requestNotificationPermission();
   }, []);
 
