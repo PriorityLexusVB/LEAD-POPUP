@@ -46,8 +46,7 @@ export default function LeadList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Simplified query without 'orderBy' to prevent index-related issues.
-    const q = query(collection(db, 'leads_v2'));
+    const q = query(collection(db, 'email_leads'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const newLeads: Lead[] = [];

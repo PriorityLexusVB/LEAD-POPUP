@@ -26,7 +26,7 @@ app.post('/', async (req, res) => {
         return res.status(400).send('Missing raw body');
     }
 
-    await db.collection('leads_v2').add({
+    await db.collection('email_leads').add({
       raw,
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
       source: 'gmail-webhook',
