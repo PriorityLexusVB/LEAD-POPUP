@@ -6,7 +6,7 @@ import LeadCard from './LeadCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/api/notification';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query } from 'firebase/firestore';
 
 function parseRawEmail(raw: string, id: string): Lead {
     const customerNameMatch = raw.match(/Name:\s*(.*)/);
@@ -33,7 +33,8 @@ export default function LeadList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'leads_v2'), orderBy('receivedAt', 'desc'));
+    // Simplified query without 'orderBy' to prevent index-related issues.
+    const q = query(collection(db, 'leads_v2'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const newLeads: Lead[] = [];
@@ -63,6 +64,7 @@ export default function LeadList() {
             }
            leadMap.set(l.id, {...(existingLead || {}), ...l});
         });
+        // Sort leads on the client-side
         return Array.from(leadMap.values()).sort((a,b) => b.timestamp - a.timestamp);
       });
       setError(null);
