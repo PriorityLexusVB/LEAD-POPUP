@@ -1,12 +1,10 @@
+
 const { onRequest } = require('firebase-functions/v2/onRequest');
-const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const express = require('express');
 
 admin.initializeApp();
 const db = admin.firestore();
-
-const GMAIL_WEBHOOK_SECRET = defineSecret('GMAIL_WEBHOOK_SECRET');
 
 const app = express();
 app.use(express.text({ type: '*/*', limit: '10mb' }));
@@ -14,15 +12,20 @@ app.use(express.text({ type: '*/*', limit: '10mb' }));
 app.post('/', async (req, res) => {
   try {
     const provided = req.get('X-Webhook-Secret');
-    const expected = GMAIL_WEBHOOK_SECRET.value();
+    const expected = process.env.GMAIL_WEBHOOK_SECRET;
 
     console.log('Received webhook request.');
 
     if (!provided) {
-        console.warn('Webhook secret was not provided.');
+        console.warn('Webhook secret was not provided in header.');
         return res.status(401).send('Invalid webhook secret: Not provided');
     }
     
+    if (!expected) {
+        console.error('CRITICAL: GMAIL_WEBHOOK_SECRET is not set in the function environment.');
+        return res.status(500).send('Internal configuration error: Secret not configured.');
+    }
+
     if (provided !== expected) {
         console.warn(`Invalid webhook secret provided. Expected: "${expected}", but got: "${provided}"`);
         return res.status(401).send('Invalid webhook secret: Mismatch');
@@ -52,4 +55,10 @@ app.post('/', async (req, res) => {
   }
 });
 
-exports.receiveEmailLead = onRequest({ secrets: [GMAIL_WEBHOOK_SECRET], region: 'us-central1' }, app);
+exports.receiveEmailLead = onRequest(
+  {
+    region: 'us-central1',
+    secrets: ['GMAIL_WEBHOOK_SECRET'] 
+  },
+  app
+);
