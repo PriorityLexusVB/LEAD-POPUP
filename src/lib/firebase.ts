@@ -13,7 +13,7 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app);
+const db = getFirestore(app, 'leads');
 
 // If you want to connect to the Firestore emulator, uncomment the following lines
 // if (process.env.NODE_ENV === 'development') {
