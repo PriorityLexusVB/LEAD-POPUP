@@ -2,50 +2,57 @@
 const { onRequest } = require('firebase-functions/v2/onRequest');
 const admin = require('firebase-admin');
 const express = require('express');
+const { parseStringPromise } = require('xml2js');
 
 admin.initializeApp();
-const db = admin.firestore();
+const db = admin.firestore('leads');
 
 const app = express();
 app.use(express.text({ type: '*/*', limit: '10mb' }));
 
-function parseRawEmail(raw) {
+async function parseRawEmail(raw) {
   try {
-    // Find the start of the XML content
+    // Find the start of the XML content by looking for the first '<'
     const xmlStartIndex = raw.indexOf('<');
     if (xmlStartIndex === -1) {
       throw new Error('No XML content found in the email body.');
     }
     const xmlContent = raw.substring(xmlStartIndex);
 
-    const timestampMatch = xmlContent.match(/<creationdate[^>]*>(.*?)<\/creationdate>/s);
-    const timestamp = timestampMatch ? new Date(timestampMatch[1]).getTime() : Date.now();
-
-    const customerNameMatch = xmlContent.match(/<customer[^>]*>.*?<name part="full">(.*?)<\/name>.*?<\/customer>/s);
-    const vehicleMatch = xmlContent.match(/<vehicle[^>]*>.*?<make>(.*?)<\/make>.*?<model>(.*?)<\/model>.*?<\/vehicle>/s);
-    const commentsMatch = xmlContent.match(/<comments>(.*?)<\/comments>/s);
-
-    const customerName = customerNameMatch ? customerNameMatch[1].trim() : "Name not found";
-    const vehicle = vehicleMatch ? `${vehicleMatch[1].trim()} ${vehicleMatch[2].trim()}` : "Vehicle not specified";
-    const comments = commentsMatch ? commentsMatch[1].trim() : "No comments provided.";
+    // Use xml2js to parse the XML content
+    const parsed = await parseStringPromise(xmlContent, { explicitArray: false, trim: true });
+    
+    const adf = parsed.adf;
+    const prospect = adf.prospect;
+    
+    const customer = prospect.customer;
+    const vehicle = prospect.vehicle;
+    const vendor = prospect.vendor;
+    
+    const customerName = customer.contact.name._;
+    const vehicleOfInterest = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+    const comments = prospect.comments || "No comments provided.";
+    
+    // Extract timestamp from the creationdate field
+    const creationDate = new Date(adf.prospect.requestdate).getTime();
 
     return {
-      customerName,
-      vehicle,
-      comments,
+      customerName: customerName,
+      vehicle: vehicleOfInterest,
+      comments: comments,
       status: 'new',
-      timestamp,
+      timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook',
+      source: 'gmail-webhook-v3-parsed',
     };
   } catch (e) {
-    console.error(`Failed to parse XML, saving raw content. Error: ${e}`);
+    console.error(`Failed to parse XML, saving raw content. Error: ${e.message}`);
     // Return a structure that indicates a parsing failure, but still saves the raw data.
     return {
       customerName: 'Unparsed Lead',
       vehicle: 'Raw Email Data',
-      comments: `Parsing failed. Raw content: ${raw}`,
+      comments: `Parsing failed. Raw content below.\n\nError: ${e.message}\n\nRaw Body:\n${raw}`,
       status: 'new',
       timestamp: Date.now(),
       suggestion: '',
@@ -86,7 +93,7 @@ app.post('/', async (req, res) => {
         return res.status(400).send('Missing raw body');
     }
 
-    const leadData = parseRawEmail(raw);
+    const leadData = await parseRawEmail(raw);
 
     console.log('Writing to email_leads collection...');
     await db.collection('email_leads').add(leadData);
