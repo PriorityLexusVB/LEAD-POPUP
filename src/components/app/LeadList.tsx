@@ -2,12 +2,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { type Lead } from '@/lib/types';
+import { type Lead, type RawLead } from '@/lib/types';
 import LeadCard from './LeadCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/api/notification';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, DocumentData } from 'firebase/firestore';
+
+function isLead(doc: DocumentData): doc is Lead {
+  return doc && doc.customerName && doc.vehicle && doc.comments;
+}
 
 export default function LeadList() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -20,7 +24,23 @@ export default function LeadList() {
       const newLeads: Lead[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        newLeads.push({ id: doc.id, ...data } as Lead);
+        if (isLead(data)) {
+          newLeads.push({ id: doc.id, ...data } as Lead);
+        } else {
+            // Handle raw or malformed data gracefully
+            const rawData = data as RawLead;
+            const receivedAt = rawData.receivedAt || { seconds: Date.now() / 1000, nanoseconds: 0 };
+            newLeads.push({
+                id: doc.id,
+                customerName: 'Unparsed Lead',
+                vehicle: 'Check comments for details',
+                comments: rawData.raw || 'No raw data found.',
+                status: 'new',
+                timestamp: receivedAt.seconds * 1000,
+                receivedAt: receivedAt,
+                source: rawData.source || 'unknown-source',
+            });
+        }
       });
 
       setLeads(currentLeads => {
@@ -51,12 +71,16 @@ export default function LeadList() {
 
   useEffect(() => {
     const requestNotificationPermission = async () => {
-      const permissionGranted = await isPermissionGranted();
-      if (!permissionGranted) {
-        const permission = await requestPermission();
-        if (permission !== 'granted') {
-          console.log('Notification permission was not granted.');
+      try {
+        const permissionGranted = await isPermissionGranted();
+        if (!permissionGranted) {
+          const permission = await requestPermission();
+          if (permission !== 'granted') {
+            console.log('Notification permission was not granted.');
+          }
         }
+      } catch (e) {
+        console.error("Could not request notification permissions, probably not in Tauri.", e)
       }
     };
     requestNotificationPermission();

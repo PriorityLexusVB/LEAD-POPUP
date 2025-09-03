@@ -34,15 +34,17 @@ function parseRawEmail(raw) {
     };
   } catch (e) {
     console.error(`Failed to parse XML, saving raw content. Error: ${e}`);
+    // Return a structure that indicates a parsing failure, but still saves the raw data.
     return {
       customerName: 'Unparsed Lead',
       vehicle: 'Raw Email Data',
-      comments: raw,
+      comments: `Parsing failed. Raw content: ${raw}`,
       status: 'new',
       timestamp: Date.now(),
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
       source: 'gmail-webhook-error',
+      raw: raw // Explicitly save raw content on error
     };
   }
 }
@@ -86,6 +88,17 @@ app.post('/', async (req, res) => {
     return res.status(200).send('OK');
   } catch (e) {
     console.error('receiveEmailLead critical error:', e);
+    // Try to save the raw body even on critical failure, to avoid data loss
+    try {
+      await db.collection('email_leads').add({
+        raw: req.body || 'No body received',
+        error: e.toString(),
+        source: 'gmail-webhook-critical-error',
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (dbError) {
+      console.error('Failed to save error record to Firestore:', dbError);
+    }
     return res.status(500).send('Internal server error');
   }
 });
