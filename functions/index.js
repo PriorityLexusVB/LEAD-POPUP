@@ -4,10 +4,50 @@ const admin = require('firebase-admin');
 const express = require('express');
 
 admin.initializeApp();
-const db = admin.firestore();
+const db = admin.firestore('leads');
 
 const app = express();
 app.use(express.text({ type: '*/*', limit: '10mb' }));
+
+function parseRawEmail(raw) {
+  try {
+    const timestampMatch = raw.match(/Date:\s*(.*)/);
+    const timestamp = timestampMatch ? new Date(timestampMatch[1]).getTime() : Date.now();
+
+    const customerNameMatch = raw.match(/<customer[^>]*>.*?<name>(.*?)<\/name>.*?<\/customer>/s);
+    const vehicleMatch = raw.match(/<vehicle[^>]*>.*?<make>(.*?)<\/make>.*?<model>(.*?)<\/model>.*?<\/vehicle>/s);
+    const commentsMatch = raw.match(/<comments>(.*?)<\/comments>/s);
+
+    const customerName = customerNameMatch ? customerNameMatch[1].trim() : "Name not found";
+    const vehicle = vehicleMatch ? `${vehicleMatch[1].trim()} ${vehicleMatch[2].trim()}` : "Vehicle not specified";
+    const comments = commentsMatch ? commentsMatch[1].trim() : "No comments provided.";
+
+    return {
+      customerName,
+      vehicle,
+      comments,
+      status: 'new',
+      timestamp,
+      suggestion: '',
+      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      source: 'gmail-webhook',
+    };
+  } catch (e) {
+    console.error(`Failed to parse XML, saving raw content. Error: ${e}`);
+    // Return a structure that indicates a parsing failure, but still saves the raw data.
+    return {
+      customerName: 'Unparsed Lead',
+      vehicle: 'Raw Email Data',
+      comments: `Parsing failed. Raw content: ${raw}`,
+      status: 'new',
+      timestamp: Date.now(),
+      suggestion: '',
+      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      source: 'gmail-webhook-error',
+      raw: raw // Explicitly save raw content on error
+    };
+  }
+}
 
 app.post('/', async (req, res) => {
   try {
@@ -27,7 +67,7 @@ app.post('/', async (req, res) => {
     }
 
     if (provided !== expected) {
-        console.warn(`Invalid webhook secret provided. Expected: "${expected}", but got: "${provided}"`);
+        console.warn(`Invalid webhook secret provided.`);
         return res.status(401).send('Invalid webhook secret: Mismatch');
     }
 
@@ -39,18 +79,26 @@ app.post('/', async (req, res) => {
         return res.status(400).send('Missing raw body');
     }
 
+    const leadData = parseRawEmail(raw);
+
     console.log('Writing to email_leads collection...');
-    await db.collection('email_leads').add({
-      raw,
-      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook',
-      headers: { contentType: req.get('content-type') || null }
-    });
+    await db.collection('email_leads').add(leadData);
     console.log('Successfully wrote to Firestore.');
 
     return res.status(200).send('OK');
   } catch (e) {
     console.error('receiveEmailLead critical error:', e);
+    // Try to save the raw body even on critical failure, to avoid data loss
+    try {
+      await db.collection('email_leads').add({
+        raw: req.body || 'No body received',
+        error: e.toString(),
+        source: 'gmail-webhook-critical-error',
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (dbError) {
+      console.error('Failed to save error record to Firestore:', dbError);
+    }
     return res.status(500).send('Internal server error');
   }
 });
