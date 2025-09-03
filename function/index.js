@@ -5,7 +5,7 @@ const express = require('express');
 const { parseStringPromise } = require('xml2js');
 
 admin.initializeApp();
-const db = admin.firestore('leads');
+const db = admin.firestore();
 
 const app = express();
 app.use(express.text({ type: '*/*', limit: '10mb' }));
@@ -22,19 +22,20 @@ async function parseRawEmail(raw) {
     // Use xml2js to parse the XML content
     const parsed = await parseStringPromise(xmlContent, { explicitArray: false, trim: true });
     
-    const adf = parsed.adf;
-    const prospect = adf.prospect;
-    
+    if (!parsed.adf || !parsed.adf.prospect) {
+        throw new Error("ADF or prospect tag not found in XML");
+    }
+
+    const prospect = parsed.adf.prospect;
     const customer = prospect.customer;
     const vehicle = prospect.vehicle;
-    const vendor = prospect.vendor;
     
-    const customerName = customer.contact.name._;
-    const vehicleOfInterest = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+    const customerName = customer?.contact?.name?._ || customer?.contact?.name || "Name not found";
+    const vehicleOfInterest = `${vehicle?.year || ''} ${vehicle?.make || ''} ${vehicle?.model || ''}`.trim() || "Vehicle not specified";
     const comments = prospect.comments || "No comments provided.";
     
-    // Extract timestamp from the creationdate field
-    const creationDate = new Date(adf.prospect.requestdate).getTime();
+    // Extract timestamp from the requestdate field, fallback to now
+    const creationDate = prospect.requestdate ? new Date(prospect.requestdate).getTime() : Date.now();
 
     return {
       customerName: customerName,
@@ -44,7 +45,7 @@ async function parseRawEmail(raw) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-v3-parsed',
+      source: 'gmail-webhook-v3-xml2js',
     };
   } catch (e) {
     console.error(`Failed to parse XML, saving raw content. Error: ${e.message}`);
@@ -70,19 +71,9 @@ app.post('/', async (req, res) => {
 
     console.log('Received webhook request.');
 
-    if (!provided) {
-        console.warn('Webhook secret was not provided in header.');
-        return res.status(401).send('Invalid webhook secret: Not provided');
-    }
-    
-    if (!expected) {
-        console.error('CRITICAL: GMAIL_WEBHOOK_SECRET is not set in the function environment.');
-        return res.status(500).send('Internal configuration error: Secret not configured.');
-    }
-
     if (provided !== expected) {
         console.warn(`Invalid webhook secret provided.`);
-        return res.status(401).send('Invalid webhook secret: Mismatch');
+        return res.status(401).send('Invalid webhook secret');
     }
 
     console.log('Webhook secret validated successfully.');
@@ -101,7 +92,7 @@ app.post('/', async (req, res) => {
 
     return res.status(200).send('OK');
   } catch (e) {
-    console.error('receiveEmailLead critical error:', e);
+    console.error('receiveEmailLead critical error:', e.message, e.stack);
     // Try to save the raw body even on critical failure, to avoid data loss
     try {
       await db.collection('email_leads').add({
