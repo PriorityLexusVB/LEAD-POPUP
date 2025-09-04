@@ -17,10 +17,10 @@ async function parseRawEmail(encodedBody) {
   // Step 1: Decode the Base64 string to get the raw email content.
   const rawDecodedBody = Buffer.from(encodedBody, 'base64').toString('utf8');
 
-  // Step 2: Find the start of the XML content by looking for the first '<' character.
-  const xmlStartIndex = rawDecodedBody.indexOf('<');
+  // Step 2: Find the start of the XML content by looking for the <adf> tag. This is more reliable.
+  const xmlStartIndex = rawDecodedBody.indexOf('<adf>');
   if (xmlStartIndex === -1) {
-    throw new Error('No XML content found in the decoded email body.');
+    throw new Error('No <adf> tag found in the decoded email body.');
   }
   const xmlContent = rawDecodedBody.substring(xmlStartIndex);
 
@@ -59,14 +59,10 @@ app.post('/', async (req, res) => {
     const provided = req.get('X-Webhook-Secret');
     const expected = process.env.GMAIL_WEBHOOK_SECRET;
 
-    console.log('Received webhook request.');
-
     if (provided !== expected) {
         console.warn(`Invalid webhook secret provided.`);
         return res.status(401).send('Invalid webhook secret');
     }
-
-    console.log('Webhook secret validated successfully.');
 
     const encodedBody = req.body;
     if (!encodedBody || typeof encodedBody !== 'string') {
@@ -95,9 +91,7 @@ app.post('/', async (req, res) => {
 
   try {
     // Always attempt to write the result (either parsed data or an error record) to Firestore.
-    console.log('Writing lead data to email_leads collection in "leads" database...');
     await db.collection('email_leads').add(leadData);
-    console.log('Successfully wrote lead data to Firestore.');
     
     return res.status(200).send('OK');
   } catch (dbError) {
