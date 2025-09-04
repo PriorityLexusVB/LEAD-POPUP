@@ -8,16 +8,23 @@ admin.initializeApp();
 const db = admin.firestore('leads');
 
 const app = express();
+// Increase limit to handle base64 encoded body
 app.use(express.text({ type: '*/*', limit: '10mb' }));
 
-async function parseRawEmail(raw) {
+async function parseRawEmail(encodedBody) {
   // This function will now throw an error if parsing fails, which will be caught by the caller.
-  const xmlStartIndex = raw.indexOf('<');
-  if (xmlStartIndex === -1) {
-    throw new Error('No XML content found in the email body.');
-  }
-  const xmlContent = raw.substring(xmlStartIndex);
+  
+  // Step 1: Decode the Base64 string to get the raw email content.
+  const rawDecodedBody = Buffer.from(encodedBody, 'base64').toString('utf8');
 
+  // Step 2: Find the start of the XML content.
+  const xmlStartIndex = rawDecodedBody.indexOf('<');
+  if (xmlStartIndex === -1) {
+    throw new Error('No XML content found in the decoded email body.');
+  }
+  const xmlContent = rawDecodedBody.substring(xmlStartIndex);
+
+  // Step 3: Parse the XML content.
   const parsed = await parseStringPromise(xmlContent, { explicitArray: false, trim: true });
   
   if (!parsed.adf || !parsed.adf.prospect) {
@@ -61,14 +68,14 @@ app.post('/', async (req, res) => {
 
     console.log('Webhook secret validated successfully.');
 
-    const raw = req.body;
-    if (!raw || typeof raw !== 'string') {
+    const encodedBody = req.body;
+    if (!encodedBody || typeof encodedBody !== 'string') {
         console.warn('Request body is missing or not a string.');
         return res.status(400).send('Missing raw body');
     }
 
     // Attempt to parse the email.
-    leadData = await parseRawEmail(raw);
+    leadData = await parseRawEmail(encodedBody);
 
   } catch (e) {
     console.error(`Lead processing failed: ${e.message}`);
