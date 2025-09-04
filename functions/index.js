@@ -17,14 +17,14 @@ async function parseRawEmail(encodedBody) {
   // Step 1: Decode the Base64 string to get the raw email content.
   const rawDecodedBody = Buffer.from(encodedBody, 'base64').toString('utf8');
 
-  // Step 2: Find the start of the XML content.
+  // Step 2: Find the start of the XML content by looking for the first '<' character.
   const xmlStartIndex = rawDecodedBody.indexOf('<');
   if (xmlStartIndex === -1) {
     throw new Error('No XML content found in the decoded email body.');
   }
   const xmlContent = rawDecodedBody.substring(xmlStartIndex);
 
-  // Step 3: Parse the XML content.
+  // Step 3: Parse the extracted XML content.
   const parsed = await parseStringPromise(xmlContent, { explicitArray: false, trim: true });
   
   if (!parsed.adf || !parsed.adf.prospect) {
