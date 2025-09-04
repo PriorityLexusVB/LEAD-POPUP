@@ -5,66 +5,49 @@ const express = require('express');
 const { parseStringPromise } = require('xml2js');
 
 admin.initializeApp();
-const db = admin.firestore();
+const db = admin.firestore('leads');
 
 const app = express();
 app.use(express.text({ type: '*/*', limit: '10mb' }));
 
 async function parseRawEmail(raw) {
-  try {
-    // Find the start of the XML content by looking for the first '<'
-    const xmlStartIndex = raw.indexOf('<');
-    if (xmlStartIndex === -1) {
-      throw new Error('No XML content found in the email body.');
-    }
-    const xmlContent = raw.substring(xmlStartIndex);
-
-    // Use xml2js to parse the XML content
-    const parsed = await parseStringPromise(xmlContent, { explicitArray: false, trim: true });
-    
-    if (!parsed.adf || !parsed.adf.prospect) {
-        throw new Error("ADF or prospect tag not found in XML");
-    }
-
-    const prospect = parsed.adf.prospect;
-    const customer = prospect.customer;
-    const vehicle = prospect.vehicle;
-    
-    const customerName = customer?.contact?.name?._ || customer?.contact?.name || "Name not found";
-    const vehicleOfInterest = `${vehicle?.year || ''} ${vehicle?.make || ''} ${vehicle?.model || ''}`.trim() || "Vehicle not specified";
-    const comments = prospect.comments || "No comments provided.";
-    
-    // Extract timestamp from the requestdate field, fallback to now
-    const creationDate = prospect.requestdate ? new Date(prospect.requestdate).getTime() : Date.now();
-
-    return {
-      customerName: customerName,
-      vehicle: vehicleOfInterest,
-      comments: comments,
-      status: 'new',
-      timestamp: creationDate,
-      suggestion: '',
-      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-v3-xml2js',
-    };
-  } catch (e) {
-    console.error(`Failed to parse XML, saving raw content. Error: ${e.message}`);
-    // Return a structure that indicates a parsing failure, but still saves the raw data.
-    return {
-      customerName: 'Unparsed Lead',
-      vehicle: 'Raw Email Data',
-      comments: `Parsing failed. Raw content below.\n\nError: ${e.message}\n\nRaw Body:\n${raw}`,
-      status: 'new',
-      timestamp: Date.now(),
-      suggestion: '',
-      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-error',
-      raw: raw // Explicitly save raw content on error
-    };
+  // This function will now throw an error if parsing fails, which will be caught by the caller.
+  const xmlStartIndex = raw.indexOf('<');
+  if (xmlStartIndex === -1) {
+    throw new Error('No XML content found in the email body.');
   }
+  const xmlContent = raw.substring(xmlStartIndex);
+
+  const parsed = await parseStringPromise(xmlContent, { explicitArray: false, trim: true });
+  
+  if (!parsed.adf || !parsed.adf.prospect) {
+      throw new Error("ADF or prospect tag not found in XML");
+  }
+
+  const prospect = parsed.adf.prospect;
+  const customer = prospect.customer;
+  const vehicle = prospect.vehicle;
+  
+  const customerName = customer?.contact?.name?._ || customer?.contact?.name || "Name not found";
+  const vehicleOfInterest = `${vehicle?.year || ''} ${vehicle?.make || ''} ${vehicle?.model || ''}`.trim() || "Vehicle not specified";
+  const comments = prospect.comments || "No comments provided.";
+  
+  const creationDate = prospect.requestdate ? new Date(prospect.requestdate).getTime() : Date.now();
+
+  return {
+    customerName: customerName,
+    vehicle: vehicleOfInterest,
+    comments: comments,
+    status: 'new',
+    timestamp: creationDate,
+    suggestion: '',
+    receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+    source: 'gmail-webhook-v4-final',
+  };
 }
 
 app.post('/', async (req, res) => {
+  let leadData;
   try {
     const provided = req.get('X-Webhook-Secret');
     const expected = process.env.GMAIL_WEBHOOK_SECRET;
@@ -84,27 +67,36 @@ app.post('/', async (req, res) => {
         return res.status(400).send('Missing raw body');
     }
 
-    const leadData = await parseRawEmail(raw);
+    // Attempt to parse the email.
+    leadData = await parseRawEmail(raw);
 
-    console.log('Writing to email_leads collection...');
-    await db.collection('email_leads').add(leadData);
-    console.log('Successfully wrote to Firestore.');
-
-    return res.status(200).send('OK');
   } catch (e) {
-    console.error('receiveEmailLead critical error:', e.message, e.stack);
-    // Try to save the raw body even on critical failure, to avoid data loss
-    try {
-      await db.collection('email_leads').add({
-        raw: req.body || 'No body received',
-        error: e.toString(),
-        source: 'gmail-webhook-critical-error',
-        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    } catch (dbError) {
-      console.error('Failed to save error record to Firestore:', dbError);
-    }
-    return res.status(500).send('Internal server error');
+    console.error(`Lead processing failed: ${e.message}`);
+    // If any error occurs during parsing, create an error lead object.
+    leadData = {
+      customerName: 'Unparsed Lead',
+      vehicle: 'Raw Email Data',
+      comments: `Parsing failed. Raw content below.\n\nError: ${e.message}\n\nRaw Body:\n${req.body}`,
+      status: 'new',
+      timestamp: Date.now(),
+      suggestion: '',
+      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      source: 'gmail-webhook-error',
+      raw: req.body // Explicitly save raw content on error
+    };
+  }
+
+  try {
+    // Always attempt to write the result (either parsed data or an error record) to Firestore.
+    console.log('Writing lead data to email_leads collection in "leads" database...');
+    await db.collection('email_leads').add(leadData);
+    console.log('Successfully wrote lead data to Firestore.');
+    
+    return res.status(200).send('OK');
+  } catch (dbError) {
+    console.error('CRITICAL: Failed to write to Firestore:', dbError.message, dbError.stack);
+    // This is a critical failure, e.g., Firestore permissions are wrong.
+    return res.status(500).send('Internal server error: Could not write to database.');
   }
 });
 
