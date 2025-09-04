@@ -2,6 +2,7 @@
 const { onRequest } = require('firebase-functions/v2/onRequest');
 const admin = require('firebase-admin');
 const express = require('express');
+const { parseStringPromise } = require('xml2js');
 
 admin.initializeApp();
 const db = admin.firestore('leads');
@@ -9,36 +10,50 @@ const db = admin.firestore('leads');
 const app = express();
 app.use(express.text({ type: '*/*', limit: '10mb' }));
 
-function parseRawEmail(raw) {
+async function parseRawEmail(raw) {
   try {
-    const timestampMatch = raw.match(/Date:\s*(.*)/);
-    const timestamp = timestampMatch ? new Date(timestampMatch[1]).getTime() : Date.now();
+    // Find the start of the XML content by looking for the first '<'
+    const xmlStartIndex = raw.indexOf('<');
+    if (xmlStartIndex === -1) {
+      throw new Error('No XML content found in the email body.');
+    }
+    const xmlContent = raw.substring(xmlStartIndex);
 
-    const customerNameMatch = raw.match(/<customer[^>]*>.*?<name>(.*?)<\/name>.*?<\/customer>/s);
-    const vehicleMatch = raw.match(/<vehicle[^>]*>.*?<make>(.*?)<\/make>.*?<model>(.*?)<\/model>.*?<\/vehicle>/s);
-    const commentsMatch = raw.match(/<comments>(.*?)<\/comments>/s);
+    // Use xml2js to parse the XML content
+    const parsed = await parseStringPromise(xmlContent, { explicitArray: false, trim: true });
+    
+    if (!parsed.adf || !parsed.adf.prospect) {
+        throw new Error("ADF or prospect tag not found in XML");
+    }
 
-    const customerName = customerNameMatch ? customerNameMatch[1].trim() : "Name not found";
-    const vehicle = vehicleMatch ? `${vehicleMatch[1].trim()} ${vehicleMatch[2].trim()}` : "Vehicle not specified";
-    const comments = commentsMatch ? commentsMatch[1].trim() : "No comments provided.";
+    const prospect = parsed.adf.prospect;
+    const customer = prospect.customer;
+    const vehicle = prospect.vehicle;
+    
+    const customerName = customer?.contact?.name?._ || customer?.contact?.name || "Name not found";
+    const vehicleOfInterest = `${vehicle?.year || ''} ${vehicle?.make || ''} ${vehicle?.model || ''}`.trim() || "Vehicle not specified";
+    const comments = prospect.comments || "No comments provided.";
+    
+    // Extract timestamp from the requestdate field, fallback to now
+    const creationDate = prospect.requestdate ? new Date(prospect.requestdate).getTime() : Date.now();
 
     return {
-      customerName,
-      vehicle,
-      comments,
+      customerName: customerName,
+      vehicle: vehicleOfInterest,
+      comments: comments,
       status: 'new',
-      timestamp,
+      timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook',
+      source: 'gmail-webhook-v3-xml2js-final',
     };
   } catch (e) {
-    console.error(`Failed to parse XML, saving raw content. Error: ${e}`);
+    console.error(`Failed to parse XML, saving raw content. Error: ${e.message}`);
     // Return a structure that indicates a parsing failure, but still saves the raw data.
     return {
       customerName: 'Unparsed Lead',
       vehicle: 'Raw Email Data',
-      comments: `Parsing failed. Raw content: ${raw}`,
+      comments: `Parsing failed. Raw content below.\n\nError: ${e.message}\n\nRaw Body:\n${raw}`,
       status: 'new',
       timestamp: Date.now(),
       suggestion: '',
@@ -56,19 +71,9 @@ app.post('/', async (req, res) => {
 
     console.log('Received webhook request.');
 
-    if (!provided) {
-        console.warn('Webhook secret was not provided in header.');
-        return res.status(401).send('Invalid webhook secret: Not provided');
-    }
-    
-    if (!expected) {
-        console.error('CRITICAL: GMAIL_WEBHOOK_SECRET is not set in the function environment.');
-        return res.status(500).send('Internal configuration error: Secret not configured.');
-    }
-
     if (provided !== expected) {
         console.warn(`Invalid webhook secret provided.`);
-        return res.status(401).send('Invalid webhook secret: Mismatch');
+        return res.status(401).send('Invalid webhook secret');
     }
 
     console.log('Webhook secret validated successfully.');
@@ -79,15 +84,15 @@ app.post('/', async (req, res) => {
         return res.status(400).send('Missing raw body');
     }
 
-    const leadData = parseRawEmail(raw);
+    const leadData = await parseRawEmail(raw);
 
-    console.log('Writing to email_leads collection...');
+    console.log('Writing to email_leads collection in "leads" database...');
     await db.collection('email_leads').add(leadData);
     console.log('Successfully wrote to Firestore.');
 
     return res.status(200).send('OK');
   } catch (e) {
-    console.error('receiveEmailLead critical error:', e);
+    console.error('receiveEmailLead critical error:', e.message, e.stack);
     // Try to save the raw body even on critical failure, to avoid data loss
     try {
       await db.collection('email_leads').add({
