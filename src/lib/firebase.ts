@@ -1,3 +1,4 @@
+
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 
@@ -27,3 +28,5 @@ const db = getFirestore(app);
 // }
 
 export { db };
+
+    
