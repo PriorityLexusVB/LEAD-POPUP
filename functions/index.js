@@ -65,7 +65,7 @@ async function parseRawEmail(encodedBody) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-v6-final',
+      source: 'gmail-webhook-v-final-fix',
     };
   } catch (parseError) {
       // Re-throw the error with more context to be caught by the main handler.
