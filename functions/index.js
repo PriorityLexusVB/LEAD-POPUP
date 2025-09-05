@@ -64,7 +64,7 @@ async function parseRawEmail(encodedBody) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-final-fix', 
+      source: 'gmail-webhook-final-fix-v2', 
     };
   } catch (parseError) {
       throw new Error(`Parsing failed: ${parseError.message}`);
@@ -136,10 +136,8 @@ exports.receiveEmailLead = onRequest(
         console.log('Successfully wrote lead data to Firestore.');
         res.status(200).send('OK');
     } catch (dbError) {
-        console.error('CRITICAL: Failed to write SUCCESS lead to Firestore:', dbError.message, dbError.stack);
+        console.error('CRITICAL: Failed to write SUCCESS lead to Firestore:', dbError_message, dbError.stack);
         res.status(500).send('Internal server error: Could not write to database.');
     }
   }
 );
-
-    
