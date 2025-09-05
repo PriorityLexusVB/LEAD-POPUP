@@ -15,6 +15,7 @@ async function parseRawEmail(encodedBody) {
     // Step 1: The incoming body is a Base64 encoded string from the script. Decode it.
     let decodedBody;
     try {
+        // Use Buffer to handle Base64 decoding from the raw request payload.
         decodedBody = Buffer.from(encodedBody, 'base64').toString('utf8');
     } catch (e) {
         throw new Error(`Base64 decoding failed: ${e.message}`);
@@ -62,7 +63,7 @@ async function parseRawEmail(encodedBody) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-final-fix-final',
+      source: 'gmail-webhook-final-fix-final-final-v2',
     };
   } catch (parseError) {
       // Re-throw the error with more context to be caught by the main handler.
@@ -79,6 +80,7 @@ exports.receiveEmailLead = onRequest(
   async (req, res) => {
     let leadData;
     // We use req.rawBody which is a Buffer provided by Firebase Functions
+    // Convert the buffer to a utf8 string to get the Base64 content from the script
     const encodedBody = req.rawBody.toString('utf8');
 
     try {
