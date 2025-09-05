@@ -14,7 +14,7 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-// CORRECT: Point to the default database to match the function.
+// Point to the default database to match the function.
 const db = getFirestore(app);
 
 // If you want to connect to the Firestore emulator, uncomment the following lines
