@@ -4,7 +4,8 @@ const admin = require('firebase-admin');
 const { parseStringPromise } = require('xml2js');
 
 admin.initializeApp();
-const db = admin.firestore('leads');
+const db = admin.firestore();
+db.settings({ databaseId: 'leads' });
 
 async function parseRawEmail(encodedBody) {
   try {
@@ -15,7 +16,7 @@ async function parseRawEmail(encodedBody) {
     // Step 1: The incoming body is a Base64 encoded string from the script. Decode it.
     let decodedBody;
     try {
-        // Use Buffer to handle Base64 decoding from the raw request payload.
+        // Use Buffer to handle Base64 decoding. The body from req.rawBody is a buffer, convert to string first.
         decodedBody = Buffer.from(encodedBody, 'base64').toString('utf8');
     } catch (e) {
         throw new Error(`Base64 decoding failed: ${e.message}`);
@@ -63,7 +64,7 @@ async function parseRawEmail(encodedBody) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-final-fix-final-final-v2',
+      source: 'gmail-webhook-final-fix-final-final-v3', // Version bump for tracking
     };
   } catch (parseError) {
       // Re-throw the error with more context to be caught by the main handler.
@@ -79,9 +80,9 @@ exports.receiveEmailLead = onRequest(
   },
   async (req, res) => {
     let leadData;
-    // We use req.rawBody which is a Buffer provided by Firebase Functions
-    // Convert the buffer to a utf8 string to get the Base64 content from the script
-    const encodedBody = req.rawBody.toString('utf8');
+    // Firebase Functions automatically provides a rawBody buffer on the request object.
+    // We convert it to a utf8 string to get the Base64 content sent from the script.
+    const encodedBody = req.rawBody ? req.rawBody.toString('utf8') : undefined;
 
     try {
         const provided = req.get('X-Webhook-Secret');
@@ -94,15 +95,21 @@ exports.receiveEmailLead = onRequest(
         }
 
         if (!encodedBody) {
-            console.warn('Request body is missing.');
+            console.error('Request body is missing. This indicates a problem with the function configuration or the incoming request.');
             res.status(400).json({ ok: false, error: 'Bad request: Missing body' });
             return;
         }
-
+        
+        console.log("Received encoded body. Attempting to parse...");
         leadData = await parseRawEmail(encodedBody);
+        console.log("Successfully parsed lead data.");
 
     } catch (e) {
-        console.error(`Lead processing failed: ${e.message}`);
+        console.error(`Lead processing failed critically: ${e.message}`);
+        console.error("--- Start Raw Body That Caused Error ---");
+        console.error(encodedBody);
+        console.error("--- End Raw Body ---");
+        
         leadData = {
           customerName: 'Unparsed Lead',
           vehicle: 'Raw Email Data',
@@ -115,16 +122,14 @@ exports.receiveEmailLead = onRequest(
           raw: encodedBody
         };
         
-        // Always write the error record to Firestore for debugging
         try {
             await db.collection('email_leads').add(leadData);
         } catch (dbError) {
-            console.error('CRITICAL: Failed to write error lead to Firestore:', dbError.message, dbError.stack);
+            console.error('CRITICAL: Failed to write ERROR lead to Firestore:', dbError.message, dbError.stack);
         }
         
-        // Respond with a 400 status code
         res.status(400).json({ ok: false, error: `Bad request: ${e.message}` });
-        return; // Stop execution
+        return;
     }
 
     try {
@@ -132,7 +137,7 @@ exports.receiveEmailLead = onRequest(
         console.log('Successfully wrote lead data to Firestore.');
         res.status(200).send('OK');
     } catch (dbError) {
-        console.error('CRITICAL: Failed to write success lead to Firestore:', dbError.message, dbError.stack);
+        console.error('CRITICAL: Failed to write SUCCESS lead to Firestore:', dbError.message, dbError.stack);
         res.status(500).send('Internal server error: Could not write to database.');
     }
   }
