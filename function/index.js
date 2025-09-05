@@ -1,11 +1,80 @@
 
-const { onRequest } = require('firebase-functions/v2/onRequest');
-const admin = require('firebase-admin');
-const { parseStringPromise } = require('xml2js');
+const { onRequest } = require("firebase-functions/v2/https");
+const { logger } = require("firebase-functions");
+const admin = require("firebase-admin");
+const { parseStringPromise } = require("xml2js");
 
-admin.initializeApp();
-// Point to the default database, which always exists.
-const db = admin.firestore();
+/** Spark mode & env */
+const SPARK_ONLY = process.env.SPARK_ONLY === "1";
+const ENV = {
+  GMAIL_WEBHOOK_SECRET: (process.env.GMAIL_WEBHOOK_SECRET || "").trim(),
+  OPENAI_API_KEY: (process.env.OPENAI_API_KEY || "").trim(),
+};
+
+/** Admin init — bind to project */
+let _app, _db;
+function ensureAdmin() {
+  if (!_app) {
+    _app = admin.initializeApp();
+    _db = admin.firestore(_app);
+  }
+  return { app: _app, db: _db };
+}
+
+
+/** health */
+exports.health = onRequest({ invoker: "public" }, (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    node: process.version,
+    at: new Date().toISOString(),
+    mode: SPARK_ONLY ? "spark" : "other",
+  });
+});
+
+/** testSecrets (reads env only) */
+exports.testSecrets = onRequest({ invoker: "public" }, (_req, res) => {
+  res.json({
+    ok: Boolean(ENV.GMAIL_WEBHOOK_SECRET || ENV.OPENAI_API_KEY),
+    checks: {
+      GMAIL_WEBHOOK_SECRET: Boolean(ENV.GMAIL_WEBHOOK_SECRET),
+      OPENAI_API_KEY: Boolean(ENV.OPENAI_API_KEY),
+      // harmless extras if you ever add them:
+      GMAIL_CLIENT_ID: Boolean(process.env.GMAIL_CLIENT_ID),
+      GMAIL_CLIENT_SECRET: Boolean(process.env.GMAIL_CLIENT_SECRET),
+      GMAIL_REFRESH_TOKEN: Boolean(process.env.GMAIL_REFRESH_TOKEN),
+      GMAIL_REDIRECT_URI: Boolean(process.env.GMAIL_REDIRECT_URI),
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/** firestoreHealth — writes a probe doc in DB */
+exports.firestoreHealth = onRequest({ invoker: "public" }, async (_req, res) => {
+  try {
+    const { db } = ensureAdmin();
+    const ref = db.collection("_health").doc("probe");
+    await ref.set(
+      {
+        ping: admin.firestore.FieldValue.serverTimestamp(),
+        node: process.version,
+        ranAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    const snap = await ref.get();
+    res.json({ ok: true, exists: snap.exists, data: snap.data() || null });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+/** gmailHealth (stub for Spark) */
+exports.gmailHealth = onRequest({ invoker: "public" }, async (_req, res) => {
+  res.json({ ok: true, note: "gmailHealth is stubbed for Spark mode" });
+});
+
 
 async function parseRawEmail(rawBody) {
   try {
@@ -74,6 +143,7 @@ async function parseRawEmail(rawBody) {
   }
 }
 
+// receiveEmailLead — auth via header
 exports.receiveEmailLead = onRequest(
   {
     region: 'us-central1',
@@ -101,8 +171,13 @@ exports.receiveEmailLead = onRequest(
         }
         
         console.log("Received raw body. Attempting to parse...");
+        const { db } = ensureAdmin();
         leadData = await parseRawEmail(rawBody);
         console.log("Successfully parsed lead data.");
+        
+        await db.collection('email_leads').add(leadData);
+        console.log('Successfully wrote lead data to Firestore.');
+        res.status(200).send('OK');
 
     } catch (e) {
         console.error(`Lead processing failed critically: ${e.message}`);
@@ -125,6 +200,7 @@ exports.receiveEmailLead = onRequest(
         
         // Attempt to save the error record to Firestore
         try {
+            const { db } = ensureAdmin();
             await db.collection('email_leads').add(leadData);
         } catch (dbError) {
             console.error('CRITICAL: Failed to write ERROR lead to Firestore:', dbError.message, dbError.stack);
@@ -133,14 +209,59 @@ exports.receiveEmailLead = onRequest(
         res.status(400).json({ ok: false, error: `Bad request: ${e.message}` });
         return;
     }
-
-    try {
-        await db.collection('email_leads').add(leadData);
-        console.log('Successfully wrote lead data to Firestore.');
-        res.status(200).send('OK');
-    } catch (dbError) {
-        console.error('CRITICAL: Failed to write SUCCESS lead to Firestore:', dbError.message, dbError.stack);
-        res.status(500).send('Internal server error: Could not write to database.');
-    }
   }
 );
+
+
+/** listLeads — GET, CORS, read-only for Electron polling */
+exports.listLeads = onRequest({ invoker: "public" }, async (req, res) => {
+  try {
+    // CORS
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") return res.status(204).end();
+
+    const { db } = ensureAdmin();
+
+    const limitParam = Math.max(1, Math.min(100, parseInt(String(req.query.limit || "50"), 10)));
+    const sinceParam = String(req.query.since || "").trim();
+    const since = sinceParam ? new Date(sinceParam) : null;
+
+    let q = db.collection("email_leads").orderBy("receivedAt", "desc");
+    if (since && !isNaN(since.getTime())) {
+      q = q.where("receivedAt", ">", since);
+    }
+    q = q.limit(limitParam);
+
+    const snap = await q.get();
+    const items = snap.docs.map((doc) => {
+      const d = doc.data();
+      const ts =
+        typeof d.receivedAt?.toDate === "function"
+          ? d.receivedAt.toDate()
+          : (d.receivedAt && new Date(d.receivedAt)) || null;
+      return {
+        id: doc.id,
+        receivedAt: ts ? ts.toISOString() : null,
+        subject: d.subject || null,
+        vehicle: d.vehicle || null,
+        customer: d.customer || null,
+        source: d.source || null,
+      };
+    });
+
+    return res.json({ ok: true, items });
+  } catch (err) {
+    logger.error(err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+/** AI stub */
+exports.generateAIReply = onRequest({ invoker: "public" }, async (_req, res) => {
+  if (!ENV.OPENAI_API_KEY) {
+    return res.status(200).json({ ok: true, stub: true, note: "No OPENAI_API_KEY set; Spark-safe stub." });
+  }
+  return res.json({ ok: true, note: "OPENAI_API_KEY present. Add outbound call if on Blaze." });
+});
