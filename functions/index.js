@@ -13,7 +13,12 @@ async function parseRawEmail(encodedBody) {
     }
     
     // Step 1: The incoming body is a Base64 encoded string from the script. Decode it.
-    let decodedBody = Buffer.from(encodedBody, 'base64').toString('utf8');
+    let decodedBody;
+    try {
+        decodedBody = Buffer.from(encodedBody, 'base64').toString('utf8');
+    } catch (e) {
+        throw new Error(`Base64 decoding failed: ${e.message}`);
+    }
 
     // Step 2: Find the start of the XML content. The ADF format can sometimes have inconsistent casing.
     const adfStartIndex = decodedBody.toLowerCase().indexOf('<adf>');
@@ -57,7 +62,7 @@ async function parseRawEmail(encodedBody) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-final-final-fix',
+      source: 'gmail-webhook-final-fix-final',
     };
   } catch (parseError) {
       // Re-throw the error with more context to be caught by the main handler.
@@ -108,13 +113,15 @@ exports.receiveEmailLead = onRequest(
           raw: encodedBody
         };
         
-        res.status(400).json({ ok: false, error: `Bad request: ${e.message}` });
-        
+        // Always write the error record to Firestore for debugging
         try {
             await db.collection('email_leads').add(leadData);
         } catch (dbError) {
             console.error('CRITICAL: Failed to write error lead to Firestore:', dbError.message, dbError.stack);
         }
+        
+        // Respond with a 400 status code
+        res.status(400).json({ ok: false, error: `Bad request: ${e.message}` });
         return; // Stop execution
     }
 
