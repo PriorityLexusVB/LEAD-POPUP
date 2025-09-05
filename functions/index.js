@@ -8,29 +8,37 @@ admin.initializeApp();
 const db = admin.firestore('leads');
 
 const app = express();
-app.use(express.text({ type: '*/*', limit: '10mb' }));
+
+// A middleware to capture the raw body, as express.text() is not behaving as expected.
+app.use((req, res, next) => {
+  let data = '';
+  req.setEncoding('utf8');
+  req.on('data', (chunk) => {
+    data += chunk;
+  });
+  req.on('end', () => {
+    req.rawBody = data;
+    next();
+  });
+});
 
 async function parseRawEmail(encodedBody) {
   try {
-    // Step 1: Decode the Base64 string to get the raw email content.
-    // This is the critical step to handle the payload from Google Apps Script.
-    let decodedBody = Buffer.from(encodedBody, 'base64').toString('utf8');
-
-    // Step 2: Clean the decoded string. Remove any leading characters or BOM.
-    // The '\uFEFF' is the byte order mark that can sometimes be present.
-    decodedBody = decodedBody.trim().replace(/^\uFEFF/, '');
-
-    // Step 3: Find the start and end of the XML content. This is a more robust
-    // way to handle raw email content which includes headers and other text.
-    const xmlStartIndex = decodedBody.indexOf('<adf>');
-    const xmlEndIndex = decodedBody.lastIndexOf('</adf>');
-
-    if (xmlStartIndex === -1 || xmlEndIndex === -1) {
-      throw new Error('Could not find <adf> or </adf> tags in the decoded email body.');
+    if (!encodedBody || typeof encodedBody !== 'string' || encodedBody.length === 0) {
+        throw new Error('Received empty or invalid request body.');
     }
+    
+    // Step 1: The incoming body is a Base64 encoded string. Decode it.
+    let decodedBody = Buffer.from(encodedBody, 'base64').toString('utf-8');
 
-    // Extract ONLY the XML content. The +6 is the length of '</adf>'.
-    const xmlContent = decodedBody.substring(xmlStartIndex, xmlEndIndex + 6);
+    // Step 2: Find the start of the XML content to ignore headers.
+    const xmlStartIndex = decodedBody.indexOf('<adf>');
+    if (xmlStartIndex === -1) {
+      throw new Error('Could not find the start of the <adf> tag in the decoded email.');
+    }
+    
+    // Step 3: Extract the XML content from the decoded body.
+    const xmlContent = decodedBody.substring(xmlStartIndex);
     
     // Step 4: Parse the extracted and cleaned XML content.
     const parsed = await parseStringPromise(xmlContent, { explicitArray: false, trim: true });
@@ -57,11 +65,10 @@ async function parseRawEmail(encodedBody) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-v5-robust', // Updated version for tracking
+      source: 'gmail-webhook-v6-final',
     };
   } catch (parseError) {
       // Re-throw the error with more context to be caught by the main handler.
-      // This allows us to log the exact content that failed to parse.
       throw new Error(`Parsing failed: ${parseError.message}`);
   }
 }
@@ -74,13 +81,15 @@ app.post('/', async (req, res) => {
 
     if (provided !== expected) {
         console.warn(`Invalid webhook secret provided.`);
-        return res.status(401).send('Invalid webhook secret');
+        res.status(401).send('Invalid webhook secret');
+        return;
     }
 
-    const encodedBody = req.body;
-    if (!encodedBody || typeof encodedBody !== 'string') {
-        console.warn('Request body is missing or not a string.');
-        return res.status(400).send('Missing raw body');
+    const encodedBody = req.rawBody; // Use the raw body we captured.
+    if (!encodedBody) {
+        console.warn('Request body is missing.');
+        res.status(400).json({ ok: false, error: 'Bad request: Missing body' });
+        return;
     }
 
     // Attempt to parse the email.
@@ -92,18 +101,18 @@ app.post('/', async (req, res) => {
     leadData = {
       customerName: 'Unparsed Lead',
       vehicle: 'Raw Email Data',
-      comments: `Parsing failed. Raw content below.\n\nError: ${e.message}\n\n--- Start Raw Body ---\n${req.body}\n--- End Raw Body ---`,
+      comments: `Parsing failed. Raw content below.\n\nError: ${e.message}\n\n--- Start Raw Body ---\n${req.rawBody}\n--- End Raw Body ---`,
       status: 'new',
       timestamp: Date.now(),
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
       source: 'gmail-webhook-error',
-      raw: req.body // Explicitly save raw content on error for debugging
+      raw: req.rawBody // Explicitly save raw content on error for debugging
     };
-    // Send a 400 Bad Request response when parsing fails.
+    
+    // Respond with a 400 Bad Request but still try to save the error log.
     res.status(400).json({ ok: false, error: `Bad request: ${e.message}` });
     
-    // Still try to write the error to Firestore for inspection.
     try {
         await db.collection('email_leads').add(leadData);
     } catch (dbError) {
