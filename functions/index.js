@@ -28,19 +28,34 @@ async function parseRawEmail(encodedBody) {
         throw new Error('Received empty or invalid request body.');
     }
     
-    // Step 1: The incoming body is a Base64 encoded string. Decode it.
+    // Step 1: The incoming body is a Base64 encoded string from the script. Decode it.
     let decodedBody = Buffer.from(encodedBody, 'base64').toString('utf-8');
 
     // Step 2: Find the start of the XML content to ignore headers.
     const xmlStartIndex = decodedBody.indexOf('<adf>');
     if (xmlStartIndex === -1) {
-      throw new Error('Could not find the start of the <adf> tag in the decoded email.');
+      // If <adf> is not found, try for a case-insensitive match as a fallback.
+      const lowerCaseBody = decodedBody.toLowerCase();
+      const adfIndex = lowerCaseBody.indexOf('<adf>');
+       if (adfIndex === -1) {
+         throw new Error('Could not find the start of the <adf> tag in the decoded email.');
+       }
+       // If found, we must slice the original string, not the lowercase one.
+       decodedBody = decodedBody.substring(adfIndex);
+    } else {
+        decodedBody = decodedBody.substring(xmlStartIndex);
     }
     
-    // Step 3: Extract the XML content from the decoded body.
-    const xmlContent = decodedBody.substring(xmlStartIndex);
+    // Step 3: Find the end of the XML content to remove any trailing data.
+    const xmlEndIndex = decodedBody.lastIndexOf('</adf>');
+    if (xmlEndIndex === -1) {
+        throw new Error('Could not find the end of the </adf> tag.');
+    }
+
+    // Step 4: Extract the clean XML content. The length of '</adf>' is 6.
+    const xmlContent = decodedBody.substring(0, xmlEndIndex + 6);
     
-    // Step 4: Parse the extracted and cleaned XML content.
+    // Step 5: Parse the extracted and cleaned XML content.
     const parsed = await parseStringPromise(xmlContent, { explicitArray: false, trim: true });
     
     if (!parsed.adf || !parsed.adf.prospect) {
@@ -65,7 +80,7 @@ async function parseRawEmail(encodedBody) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-v-final-fix',
+      source: 'gmail-webhook-final-fix-final',
     };
   } catch (parseError) {
       // Re-throw the error with more context to be caught by the main handler.
