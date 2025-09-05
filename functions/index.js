@@ -4,7 +4,7 @@ const admin = require('firebase-admin');
 const { parseStringPromise } = require('xml2js');
 
 admin.initializeApp();
-// CORRECT: Point to the default database, which always exists and matches the Next.js app.
+// CORRECT: Point to the default database, which always exists.
 const db = admin.firestore();
 
 async function parseRawEmail(encodedBody) {
@@ -13,34 +13,27 @@ async function parseRawEmail(encodedBody) {
         throw new Error('Received empty or invalid request body.');
     }
     
-    // Step 1: The incoming body from the script IS the Base64 encoded string. Decode it.
     let decodedBody;
     try {
-        // THE CRITICAL FIX IS HERE: Correctly decode the Base64 payload into a UTF-8 string.
         decodedBody = Buffer.from(encodedBody, 'base64').toString('utf8');
     } catch (e) {
         throw new Error(`Base64 decoding failed: ${e.message}`);
     }
 
-    // Step 2: Find the start of the XML content.
     const adfStartIndex = decodedBody.toLowerCase().indexOf('<adf>');
     if (adfStartIndex === -1) {
       throw new Error('Could not find the start of the <adf> tag in the decoded email.');
     }
     
-    // Slice the original string to maintain casing.
     const xmlContentWithHeaders = decodedBody.substring(adfStartIndex);
     
-    // Step 3: Find the end of the XML content to remove any trailing data.
     const adfEndIndex = xmlContentWithHeaders.toLowerCase().lastIndexOf('</adf>');
     if (adfEndIndex === -1) {
         throw new Error('Could not find the end of the </adf> tag.');
     }
 
-    // Step 4: Extract the clean XML content. The length of '</adf>' is 6.
     const xmlContent = xmlContentWithHeaders.substring(0, adfEndIndex + 6);
     
-    // Step 5: Parse the extracted and cleaned XML content.
     const parsed = await parseStringPromise(xmlContent, { explicitArray: false, trim: true, ignoreAttrs: true });
     
     if (!parsed.adf || !parsed.adf.prospect) {
@@ -64,14 +57,13 @@ async function parseRawEmail(encodedBody) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-final-fix-v2', 
+      source: 'gmail-webhook-final-fix-v3', 
     };
   } catch (parseError) {
       throw new Error(`Parsing failed: ${parseError.message}`);
   }
 }
 
-// Use the raw onRequest handler to have direct access to the request body.
 exports.receiveEmailLead = onRequest(
   {
     region: 'us-central1',
@@ -79,8 +71,6 @@ exports.receiveEmailLead = onRequest(
   },
   async (req, res) => {
     let leadData;
-    // Firebase Functions provides a rawBody buffer. Convert it to a utf8 string 
-    // to get the Base64 content sent from the script.
     const encodedBody = req.rawBody ? req.rawBody.toString('utf8') : undefined;
 
     try {
@@ -136,7 +126,7 @@ exports.receiveEmailLead = onRequest(
         console.log('Successfully wrote lead data to Firestore.');
         res.status(200).send('OK');
     } catch (dbError) {
-        console.error('CRITICAL: Failed to write SUCCESS lead to Firestore:', dbError_message, dbError.stack);
+        console.error('CRITICAL: Failed to write SUCCESS lead to Firestore:', dbError.message, dbError.stack);
         res.status(500).send('Internal server error: Could not write to database.');
     }
   }
