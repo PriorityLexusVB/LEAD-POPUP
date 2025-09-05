@@ -4,8 +4,8 @@ const admin = require('firebase-admin');
 const { parseStringPromise } = require('xml2js');
 
 admin.initializeApp();
-// CORRECT: Point to the 'leads' database.
-const db = admin.firestore('leads');
+// CORRECT: Point to the default database, which always exists.
+const db = admin.firestore();
 
 async function parseRawEmail(encodedBody) {
   try {
@@ -64,7 +64,7 @@ async function parseRawEmail(encodedBody) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-db-fix-final', 
+      source: 'gmail-webhook-default-db', 
     };
   } catch (parseError) {
       // Re-throw the error with more context to be caught by the main handler.
@@ -142,5 +142,3 @@ exports.receiveEmailLead = onRequest(
     }
   }
 );
-
-    
