@@ -16,7 +16,6 @@ async function parseRawEmail(encodedBody) {
     // Step 1: The incoming body is a Base64 encoded string from the script. Decode it.
     let decodedBody;
     try {
-        // Use Buffer to handle Base64 decoding. The body from req.rawBody is a buffer, convert to string first.
         decodedBody = Buffer.from(encodedBody, 'base64').toString('utf8');
     } catch (e) {
         throw new Error(`Base64 decoding failed: ${e.message}`);
@@ -51,7 +50,8 @@ async function parseRawEmail(encodedBody) {
     const customer = prospect.customer;
     const vehicle = prospect.vehicle;
     
-    const customerName = customer?.contact?.name || "Name not found";
+    // Handle cases where name might be nested or directly a string
+    const customerName = (customer && customer.contact && customer.contact.name && (customer.contact.name._ || customer.contact.name)) || "Name not found";
     const vehicleOfInterest = `${vehicle?.year || ''} ${vehicle?.make || ''} ${vehicle?.model || ''}`.trim() || "Vehicle not specified";
     const comments = prospect.comments || "No comments provided.";
     const creationDate = prospect.requestdate ? new Date(prospect.requestdate).getTime() : Date.now();
@@ -64,7 +64,7 @@ async function parseRawEmail(encodedBody) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-final-fix-final-final-v3', // Version bump for tracking
+      source: 'gmail-webhook-final-fix-v5', 
     };
   } catch (parseError) {
       // Re-throw the error with more context to be caught by the main handler.
@@ -80,7 +80,7 @@ exports.receiveEmailLead = onRequest(
   },
   async (req, res) => {
     let leadData;
-    // Firebase Functions automatically provides a rawBody buffer on the request object.
+    // Firebase Functions provides a rawBody buffer on the request object when no middleware has parsed the body.
     // We convert it to a utf8 string to get the Base64 content sent from the script.
     const encodedBody = req.rawBody ? req.rawBody.toString('utf8') : undefined;
 
