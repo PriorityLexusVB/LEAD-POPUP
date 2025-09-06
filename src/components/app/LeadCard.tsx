@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { getAiSuggestion } from '@/app/actions';
 import { type Lead } from '@/lib/types';
@@ -42,6 +42,13 @@ export default function LeadCard({ lead, onUpdate }: LeadCardProps) {
   const [isAiLoading, startAiTransition] = useTransition();
   const [suggestion, setSuggestion] = useState<string | undefined>(lead.suggestion);
   const [isHandled, setIsHandled] = useState(lead.status === 'handled');
+  const [timeAgo, setTimeAgo] = useState('');
+
+  useEffect(() => {
+    if (lead.timestamp) {
+      setTimeAgo(formatDistanceToNow(new Date(lead.timestamp), { addSuffix: true }));
+    }
+  }, [lead.timestamp]);
 
   const vehicleName = formatVehicleName(lead.vehicle);
 
@@ -75,7 +82,6 @@ export default function LeadCard({ lead, onUpdate }: LeadCardProps) {
         });
   }
 
-  const timeAgo = formatDistanceToNow(new Date(lead.timestamp), { addSuffix: true });
   const customerName = lead.customer.name || 'Unknown Lead';
 
   return (
@@ -91,7 +97,7 @@ export default function LeadCard({ lead, onUpdate }: LeadCardProps) {
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{timeAgo}</p>
+                  <p>{timeAgo || '...'}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
