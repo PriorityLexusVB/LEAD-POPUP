@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { type Lead, type RawLead } from '@/lib/types';
+import { type Lead } from '@/lib/types';
 import LeadCard from './LeadCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/api/notification';
@@ -10,52 +10,62 @@ import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, orderBy, DocumentData, updateDoc, doc } from 'firebase/firestore';
 
 function isLead(doc: DocumentData): doc is Lead {
-  return doc && doc.customerName && doc.vehicle && doc.comments;
+    const d = doc as any;
+    return d && d.customer && (d.subject || d.vehicle);
 }
+
+// Helper to construct a display name for the vehicle
+function formatVehicleName(vehicle: Lead['vehicle']) {
+    if (!vehicle) return "Vehicle not specified";
+    return `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || "Vehicle not specified";
+}
+
 
 export default function LeadList() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Corrected to listen to the 'leads_v2' collection
     const q = query(collection(db, 'leads_v2'), orderBy('receivedAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const newLeads: Lead[] = [];
-      let hasNewLead = false;
-      
       const currentLeadIds = new Set(leads.map(l => l.id));
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
+        const docId = doc.id;
+        
         if (isLead(data)) {
-            const lead = { id: doc.id, ...data } as Lead;
+            const lead: Lead = {
+                id: docId,
+                customer: data.customer,
+                vehicle: data.vehicle,
+                subject: data.subject,
+                // The AI and card expect a 'comments' field. We can map the 'subject' to it.
+                comments: data.subject || 'No comments provided.',
+                status: data.status || 'new',
+                suggestion: data.suggestion,
+                // Use receivedAt for timestamping, falling back to a default if needed
+                timestamp: data.receivedAt?.seconds ? data.receivedAt.seconds * 1000 : Date.now(),
+                receivedAt: data.receivedAt,
+                source: data.source,
+                format: data.format,
+            };
             newLeads.push(lead);
+
+            // Notification logic
             if (!currentLeadIds.has(lead.id) && lead.status === 'new') {
                 const leadTime = new Date(lead.timestamp).getTime();
                 const now = Date.now();
                 if (now - leadTime < 60000) { // Only notify for leads in the last minute
-                    hasNewLead = true;
                     sendNotification({
-                        title: `New Lead: ${lead.customerName}`,
-                        body: `Interested in: ${lead.vehicle}`,
+                        title: `New Lead: ${lead.customer.name || 'Unknown'}`,
+                        body: `Interested in: ${formatVehicleName(lead.vehicle)}`,
                     });
                 }
             }
-        } else {
-            // Handle raw or malformed data gracefully
-            const rawData = data as RawLead;
-            const receivedAt = rawData.receivedAt || { seconds: Date.now() / 1000, nanoseconds: 0 };
-            newLeads.push({
-                id: doc.id,
-                customerName: 'Unparsed Lead',
-                vehicle: 'Check comments for details',
-                comments: rawData.raw || 'No raw data found.',
-                status: 'new',
-                timestamp: receivedAt.seconds * 1000,
-                receivedAt: receivedAt,
-                source: rawData.source || 'unknown-source',
-            });
         }
       });
       
@@ -67,17 +77,14 @@ export default function LeadList() {
     });
 
     return () => unsubscribe();
-  }, [leads]); // Add `leads` to dependency array to check for new leads against the current state
+  }, [leads]); // `leads` dependency is needed for notification logic
 
   useEffect(() => {
     const requestNotificationPermission = async () => {
       try {
         const permissionGranted = await isPermissionGranted();
         if (!permissionGranted) {
-          const permission = await requestPermission();
-          if (permission !== 'granted') {
-            console.log('Notification permission was not granted.');
-          }
+          await requestPermission();
         }
       } catch (e) {
         console.error("Could not request notification permissions, probably not in Tauri.", e)
@@ -93,10 +100,8 @@ export default function LeadList() {
             status: updatedLead.status,
             suggestion: updatedLead.suggestion || '',
         });
-        // The onSnapshot listener will automatically update the UI
     } catch(e) {
         console.error("Failed to update lead: ", e);
-        // Optionally show an error to the user
     }
   };
 

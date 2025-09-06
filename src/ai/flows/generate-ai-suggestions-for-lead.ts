@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview A flow to generate AI-powered reply suggestions for sales leads.
@@ -10,10 +11,11 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
+// This schema matches the data passed from the LeadCard component.
 const GenerateAiSuggestionsForLeadInputSchema = z.object({
   customerName: z.string().describe('The name of the customer.'),
   vehicle: z.string().describe('The vehicle the customer is interested in.'),
-  comments: z.string().describe('Additional comments or information about the lead.'),
+  comments: z.string().describe('The original comments or inquiry from the customer.'),
 });
 export type GenerateAiSuggestionsForLeadInput = z.infer<typeof GenerateAiSuggestionsForLeadInputSchema>;
 
@@ -30,7 +32,14 @@ const prompt = ai.definePrompt({
   name: 'generateAiSuggestionsForLeadPrompt',
   input: {schema: GenerateAiSuggestionsForLeadInputSchema},
   output: {schema: GenerateAiSuggestionsForLeadOutputSchema},
-  prompt: `You are a sales expert. Generate a reply suggestion for a sales lead with the following information:\n\nCustomer Name: {{{customerName}}}\nVehicle: {{{vehicle}}}\nComments: {{{comments}}}\n\nSuggestion: `,
+  prompt: `You are a helpful and friendly car dealership assistant. Your goal is to write a short, professional, and welcoming reply to a potential customer based on their inquiry.
+
+Here is the customer's information:
+- Customer Name: {{{customerName}}}
+- Vehicle of Interest: {{{vehicle}}}
+- Customer's Comments: {{{comments}}}
+
+Based on this, please draft a warm and inviting email response. Acknowledge their interest in the specific vehicle and address their comments or questions directly. End by inviting them to the dealership for a test drive or to speak further. Keep the tone positive and customer-focused.`,
 });
 
 const generateAiSuggestionsForLeadFlow = ai.defineFlow(
