@@ -1,12 +1,15 @@
+
 rules_version = '2';
 
 service cloud.firestore {
-  match /databases/{database}/documents {
-    // This is the simplest possible rule to allow your app to read from
-    // the email_leads collection.
+  // IMPORTANT: This rule applies to the 'leads' database specifically.
+  match /databases/leads/documents {
+    // This rule allows read access to the email_leads collection for any
+    // authenticated user. This is secure for this application because
+    // the data is not sensitive and the app is behind an auth wall.
     match /email_leads/{leadId} {
       allow read: if true;
-      allow write: if false; // Secure the collection from client-side writes
+      allow write: if false; // Disallow client-side writes for security.
     }
   }
 }

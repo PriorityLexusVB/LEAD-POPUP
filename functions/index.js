@@ -6,8 +6,7 @@ const { parseStringPromise } = require("xml2js");
 
 // Initialize Firebase Admin SDK.
 admin.initializeApp();
-// ** THE FIX IS HERE **
-// Connect to the specific 'leads' database, not the default one.
+// Connect to the specific 'leads' database.
 const db = admin.firestore('leads');
 
 /**
