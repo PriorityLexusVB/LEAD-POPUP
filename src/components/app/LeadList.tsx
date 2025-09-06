@@ -18,7 +18,7 @@ export default function LeadList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'email_leads'), orderBy('receivedAt', 'desc'));
+    const q = query(collection(db, 'leads_v2'), orderBy('receivedAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const newLeads: Lead[] = [];
@@ -88,7 +88,7 @@ export default function LeadList() {
 
   const updateLead = async (updatedLead: Lead) => {
     try {
-        const leadRef = doc(db, 'email_leads', updatedLead.id);
+        const leadRef = doc(db, 'leads_v2', updatedLead.id);
         await updateDoc(leadRef, {
             status: updatedLead.status,
             suggestion: updatedLead.suggestion || '',
