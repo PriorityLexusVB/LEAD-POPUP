@@ -4,7 +4,7 @@ const { logger } = require('firebase-functions');
 const admin = require('firebase-admin');
 const { parseStringPromise } = require('xml2js');
 
-// Initialize Firebase Admin SDK.
+// Initialize Firebase Admin SDK. This is the only initialization needed.
 admin.initializeApp();
 
 // Get a reference to the default Firestore database.
@@ -24,13 +24,17 @@ async function parseRawEmail(rawBody) {
   // We must first decode it to get the actual email content.
   const decodedBody = Buffer.from(rawBody, 'base64').toString('utf8');
 
+  // Now, find the XML content within the decoded email body.
   const adfStartIndex = decodedBody.toLowerCase().indexOf('<adf>');
   if (adfStartIndex === -1) {
     logger.error("ADF start tag not found in decoded body:", { body: decodedBody });
     throw new Error('Could not find the start of the <adf> tag in the decoded email.');
   }
 
+  // Slice the string to get from the start of the ADF tag to the end.
   const xmlContentWithHeaders = decodedBody.substring(adfStartIndex);
+
+  // Find the closing ADF tag to ensure we only parse valid XML.
   const adfEndIndex = xmlContentWithHeaders.toLowerCase().lastIndexOf('</adf>');
   if (adfEndIndex === -1) {
     throw new Error('Could not find the end of the </adf> tag.');
@@ -67,7 +71,7 @@ async function parseRawEmail(rawBody) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-correct-final-v4', // Updated source for tracking
+      source: 'gmail-webhook-correct-final-v4',
     };
   } catch (parseError) {
     logger.error("XML Parsing Error:", { error: parseError, xml: xmlContent });

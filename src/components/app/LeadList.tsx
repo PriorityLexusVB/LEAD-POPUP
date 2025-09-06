@@ -7,7 +7,7 @@ import LeadCard from './LeadCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/api/notification';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, query, orderBy, DocumentData } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, DocumentData, updateDoc, doc } from 'firebase/firestore';
 
 function isLead(doc: DocumentData): doc is Lead {
   return doc && doc.customerName && doc.vehicle && doc.comments;
@@ -45,15 +45,21 @@ export default function LeadList() {
 
       setLeads(currentLeads => {
         const leadMap = new Map(currentLeads.map(l => [l.id, l]));
+        let hasNewLead = false;
         newLeads.forEach(l => {
-             const isNew = l.timestamp > Date.now() - 10000; // 10 second window
             const existingLead = leadMap.get(l.id);
-
-            if (!existingLead && isNew) {
-                 sendNotification({
-                    title: `New Lead: ${l.customerName}`,
-                    body: `Interested in: ${l.vehicle}`,
-                 });
+            if (!existingLead && l.status === 'new') {
+                 // Check if the lead is very recent (e.g., within the last minute)
+                 // to avoid sending notifications for old "new" leads on first load.
+                 const leadTime = new Date(l.timestamp).getTime();
+                 const now = Date.now();
+                 if (now - leadTime < 60000) {
+                    hasNewLead = true;
+                    sendNotification({
+                        title: `New Lead: ${l.customerName}`,
+                        body: `Interested in: ${l.vehicle}`,
+                    });
+                 }
             }
            leadMap.set(l.id, {...(existingLead || {}), ...l});
         });
@@ -86,8 +92,18 @@ export default function LeadList() {
     requestNotificationPermission();
   }, []);
 
-  const updateLead = (updatedLead: Lead) => {
-    setLeads(leads.map(lead => (lead.id === updatedLead.id ? updatedLead : lead)));
+  const updateLead = async (updatedLead: Lead) => {
+    try {
+        const leadRef = doc(db, 'email_leads', updatedLead.id);
+        await updateDoc(leadRef, {
+            status: updatedLead.status,
+            suggestion: updatedLead.suggestion || '',
+        });
+        // The onSnapshot listener will automatically update the UI
+    } catch(e) {
+        console.error("Failed to update lead: ", e);
+        // Optionally show an error to the user
+    }
   };
 
   const newLeads = leads.filter(lead => lead.status === 'new');

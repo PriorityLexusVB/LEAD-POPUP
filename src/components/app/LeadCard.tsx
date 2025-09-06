@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useTransition } from 'react';
@@ -28,7 +29,7 @@ import {
 
 type LeadCardProps = {
   lead: Lead;
-  onUpdate: (lead: Lead) => void;
+  onUpdate: (lead: Lead) => Promise<void>;
 };
 
 export default function LeadCard({ lead, onUpdate }: LeadCardProps) {
@@ -46,7 +47,7 @@ export default function LeadCard({ lead, onUpdate }: LeadCardProps) {
           comments: lead.comments,
         });
         setSuggestion(result);
-        onUpdate({ ...lead, suggestion: result });
+        await onUpdate({ ...lead, suggestion: result });
       } catch (error) {
         toast({
           variant: 'destructive',
@@ -58,9 +59,9 @@ export default function LeadCard({ lead, onUpdate }: LeadCardProps) {
     });
   };
   
-  const handleMarkAsHandled = () => {
+  const handleMarkAsHandled = async () => {
       setIsHandled(true);
-      onUpdate({...lead, status: 'handled'});
+      await onUpdate({...lead, status: 'handled'});
        toast({
           title: 'Lead Handled',
           description: `${lead.customerName}'s lead has been marked as handled.`,
