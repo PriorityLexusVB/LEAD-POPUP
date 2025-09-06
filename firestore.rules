@@ -2,13 +2,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // This allows the web app to query and list all documents in the leads_v2 collection.
-    // It also allows reading individual documents.
-    match /leads_v2/{document=**} {
-      allow read, write: if false; // Default deny write operations
-    }
+    // Allow public read access to the leads_v2 collection for the web app
     match /leads_v2/{leadId} {
-      allow read: if true;
+      allow read, list: if true;
+      allow write: if false; // Disallow client-side writes for now
     }
   }
 }
