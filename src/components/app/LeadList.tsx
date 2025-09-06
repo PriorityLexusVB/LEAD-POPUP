@@ -55,16 +55,25 @@ export default function LeadList() {
                  const now = Date.now();
                  if (now - leadTime < 60000) {
                     hasNewLead = true;
-                    sendNotification({
-                        title: `New Lead: ${l.customerName}`,
-                        body: `Interested in: ${l.vehicle}`,
-                    });
                  }
             }
            leadMap.set(l.id, {...(existingLead || {}), ...l});
         });
         
-        return Array.from(leadMap.values()).sort((a,b) => b.timestamp - a.timestamp);
+        const sortedLeads = Array.from(leadMap.values()).sort((a,b) => b.timestamp - a.timestamp)
+        
+        // Only send notification if there was a genuinely new lead in this snapshot
+        if (hasNewLead) {
+             const latestLead = sortedLeads.find(l => !currentLeads.some(old => old.id === l.id));
+             if (latestLead) {
+                sendNotification({
+                    title: `New Lead: ${latestLead.customerName}`,
+                    body: `Interested in: ${latestLead.vehicle}`,
+                });
+             }
+        }
+
+        return sortedLeads;
       });
       setError(null);
     }, (err) => {
