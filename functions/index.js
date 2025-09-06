@@ -4,7 +4,7 @@ const { logger } = require('firebase-functions');
 const admin = require('firebase-admin');
 const { parseStringPromise } = require('xml2js');
 
-// Initialize Firebase Admin SDK.
+// Initialize Firebase Admin SDK. This is the only initialization needed.
 admin.initializeApp();
 
 // Get a reference to the default Firestore database.
