@@ -114,8 +114,8 @@ exports.receiveEmailLead = onRequest(
       };
     }
     
-    // Use the 'leads_v2' collection as confirmed from the running function
-    await db.collection('leads_v2').add(leadData);
+    // Use the 'email_leads' collection to separate from old data.
+    await db.collection('email_leads').add(leadData);
     logger.log('Successfully wrote lead data to Firestore.', { customer: leadData.customer.name });
     res.status(200).send('OK');
   }
