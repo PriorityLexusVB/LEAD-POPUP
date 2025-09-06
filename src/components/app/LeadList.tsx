@@ -22,10 +22,26 @@ export default function LeadList() {
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const newLeads: Lead[] = [];
+      let hasNewLead = false;
+      
+      const currentLeadIds = new Set(leads.map(l => l.id));
+
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         if (isLead(data)) {
-          newLeads.push({ id: doc.id, ...data } as Lead);
+            const lead = { id: doc.id, ...data } as Lead;
+            newLeads.push(lead);
+            if (!currentLeadIds.has(lead.id) && lead.status === 'new') {
+                const leadTime = new Date(lead.timestamp).getTime();
+                const now = Date.now();
+                if (now - leadTime < 60000) { // Only notify for leads in the last minute
+                    hasNewLead = true;
+                    sendNotification({
+                        title: `New Lead: ${lead.customerName}`,
+                        body: `Interested in: ${lead.vehicle}`,
+                    });
+                }
+            }
         } else {
             // Handle raw or malformed data gracefully
             const rawData = data as RawLead;
@@ -42,39 +58,8 @@ export default function LeadList() {
             });
         }
       });
-
-      setLeads(currentLeads => {
-        const leadMap = new Map(currentLeads.map(l => [l.id, l]));
-        let hasNewLead = false;
-        newLeads.forEach(l => {
-            const existingLead = leadMap.get(l.id);
-            if (!existingLead && l.status === 'new') {
-                 // Check if the lead is very recent (e.g., within the last minute)
-                 // to avoid sending notifications for old "new" leads on first load.
-                 const leadTime = new Date(l.timestamp).getTime();
-                 const now = Date.now();
-                 if (now - leadTime < 60000) {
-                    hasNewLead = true;
-                 }
-            }
-           leadMap.set(l.id, {...(existingLead || {}), ...l});
-        });
-        
-        const sortedLeads = Array.from(leadMap.values()).sort((a,b) => b.timestamp - a.timestamp)
-        
-        // Only send notification if there was a genuinely new lead in this snapshot
-        if (hasNewLead) {
-             const latestLead = sortedLeads.find(l => !currentLeads.some(old => old.id === l.id));
-             if (latestLead) {
-                sendNotification({
-                    title: `New Lead: ${latestLead.customerName}`,
-                    body: `Interested in: ${latestLead.vehicle}`,
-                });
-             }
-        }
-
-        return sortedLeads;
-      });
+      
+      setLeads(newLeads);
       setError(null);
     }, (err) => {
       console.error("Error fetching leads from Firestore: ", err);
@@ -82,7 +67,7 @@ export default function LeadList() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [leads]); // Add `leads` to dependency array to check for new leads against the current state
 
   useEffect(() => {
     const requestNotificationPermission = async () => {
