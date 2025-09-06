@@ -11,13 +11,19 @@ import { collection, onSnapshot, query, orderBy, DocumentData, updateDoc, doc } 
 
 function isLead(doc: DocumentData): doc is Lead {
     const d = doc as any;
-    return d && d.customer && (d.comments || d.vehicle);
+    // Check for new nested structure OR old flat structure
+    return d && (d.customer || d.customerName) && (d.comments || d.vehicle);
 }
 
 // Helper to construct a display name for the vehicle
-function formatVehicleName(vehicle: Lead['vehicle']) {
-    if (!vehicle) return "Vehicle not specified";
-    return `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || "Vehicle not specified";
+function formatVehicleName(vehicle: Lead['vehicle'], oldVehicleString?: string) {
+    if (vehicle && (vehicle.make || vehicle.model || vehicle.year)) {
+      return `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || "Vehicle not specified";
+    }
+    if(oldVehicleString) {
+        return oldVehicleString;
+    }
+    return "Vehicle not specified";
 }
 
 
@@ -34,22 +40,32 @@ export default function LeadList() {
       const isFirstLoad = leads.length === 0;
 
       querySnapshot.forEach((doc) => {
-        const data = doc.data();
+        const data = doc.data() as any; // Use any to handle both old and new structures
         const docId = doc.id;
         
-        // The data model from the real function has customer and vehicle as objects.
+        // ** THE FIX IS HERE: **
+        // Adapt to both old (flat) and new (nested) data structures.
         const lead: Lead = {
             id: docId,
-            customer: data.customer || { name: 'Unknown Lead', email: null, phone: null },
-            vehicle: data.vehicle || { year: null, make: null, model: null, vin: null },
-            comments: data.comments || `Inquiry about ${data.vehicle?.year || ''} ${data.vehicle?.make || ''} ${data.vehicle?.model || ''}`.trim(),
+            customer: data.customer || { name: data.customerName || 'Unknown Lead', email: null, phone: null },
+            vehicle: data.vehicle || { year: null, make: null, model: data.vehicle || null, vin: null },
+            comments: data.comments || `Inquiry about`,
             status: data.status || 'new',
             suggestion: data.suggestion || '',
-            timestamp: data.requestdate ? new Date(data.requestdate).getTime() : (data.receivedAt?.seconds ? data.receivedAt.seconds * 1000 : Date.now()),
+            timestamp: data.timestamp || (data.receivedAt?.seconds ? data.receivedAt.seconds * 1000 : Date.now()),
             receivedAt: data.receivedAt,
             source: data.source,
             format: data.format,
         };
+
+        // The old format might just have a string for vehicle, let's pass it to formatVehicleName
+        const vehicleDisplayName = formatVehicleName(lead.vehicle, typeof data.vehicle === 'string' ? data.vehicle : undefined);
+         
+        // Re-assign vehicle as an object for consistency in the app
+        if (typeof data.vehicle === 'string') {
+            lead.vehicle.model = data.vehicle;
+        }
+
 
         if (isLead(lead)) {
             newLeads.push(lead);
@@ -58,7 +74,7 @@ export default function LeadList() {
             if (!isFirstLoad && lead.status === 'new' && !leads.find(l => l.id === lead.id)) {
                 sendNotification({
                     title: `New Lead: ${lead.customer.name || 'Unknown'}`,
-                    body: `Interested in: ${formatVehicleName(lead.vehicle)}`,
+                    body: `Interested in: ${vehicleDisplayName}`,
                 });
             }
         }
