@@ -1,20 +1,11 @@
-
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
     // Only allow the backend function to write to the leads collection.
-    // The web client should not be able to create, update, or delete leads.
+    // Allow logged-in users to read the leads collection.
     match /email_leads/{leadId} {
-      allow create: if false;
-      allow update: if request.auth != null && 
-        ('status' in request.resource.data || 'suggestion' in request.resource.data) &&
-        request.resource.data.keys().hasAll(['status', 'suggestion']);
-      allow delete: if false;
-
-      // Allow reads only by authenticated users of your application.
-      // This is a basic rule; for production, you might want to restrict this further.
       allow read: if request.auth != null;
+      allow write: if false;
     }
   }
 }
