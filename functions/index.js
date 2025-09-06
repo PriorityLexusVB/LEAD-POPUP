@@ -1,5 +1,5 @@
 
-const { onRequest } = require("firebase-functions/v2/https");
+const { onRequest } = require("firebase-functions/v2/onRequest");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
 const { parseStringPromise } = require("xml2js");

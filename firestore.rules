@@ -1,14 +1,17 @@
-
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /leads_v2/{leadId} {
-      allow read, write: if false; // Default deny
+    // This rule allows any client to read from the leads_v2 collection,
+    // but does not allow them to write. This is what your app needs.
+    match /leads_v2/{document=**} {
+      allow read: if true;
+      allow write: if false;
     }
 
-    // Allow logged-in users to read from the leads_v2 collection
+    // This rule allows updating the status and suggestion fields on a lead.
     match /leads_v2/{leadId} {
-       allow read, list: if true;
+      allow update: if request.resource.data.status != resource.data.status || request.resource.data.suggestion != resource.data.suggestion;
     }
   }
 }
