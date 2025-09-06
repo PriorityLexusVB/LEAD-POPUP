@@ -67,7 +67,7 @@ async function parseRawEmail(rawBody) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-correct-final-v3', // Updated source for tracking
+      source: 'gmail-webhook-correct-final-v4', // Updated source for tracking
     };
   } catch (parseError) {
     logger.error("XML Parsing Error:", { error: parseError, xml: xmlContent });
