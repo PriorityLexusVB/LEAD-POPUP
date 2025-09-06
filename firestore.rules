@@ -1,0 +1,16 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Allow read access to the email_leads collection.
+    // This allows your web application to display the leads.
+    // Writes are denied from the client-side for security. Only your
+    // Cloud Function should be able to create new leads.
+    match /email_leads/{leadId} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
