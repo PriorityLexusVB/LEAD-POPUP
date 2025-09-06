@@ -4,79 +4,39 @@ const { logger } = require('firebase-functions');
 const admin = require('firebase-admin');
 const { parseStringPromise } = require('xml2js');
 
-// Initialize Firebase Admin SDK. This is the only initialization needed.
+// Initialize Firebase Admin SDK.
 admin.initializeApp();
 
 // Get a reference to the default Firestore database.
 const db = admin.firestore();
 
 /**
- * Parses the raw email body to extract lead data.
- * @param {string} rawBody The raw request body, expected to be Base64 encoded.
- * @return {Promise<object>} A promise that resolves with the parsed lead data.
+ * Extracts the ADF XML content from a raw email body.
+ * @param {string} rawEmailContent The full raw content of the email.
+ * @return {string | null} The extracted XML string or null if not found.
  */
-async function parseRawEmail(rawBody) {
-  if (!rawBody || typeof rawBody !== 'string' || rawBody.length === 0) {
-    throw new Error('Received empty or invalid request body.');
+function extractXml(rawEmailContent) {
+  // The ADF/XML data is often embedded within the email body.
+  // We need to find the start of the XML declaration.
+  const xmlStartIndex = rawEmailContent.indexOf('<?xml');
+  if (xmlStartIndex === -1) {
+    logger.error('Could not find the start of the XML tag in the email content.');
+    return null;
   }
 
-  // The request body from Google Apps Script is a Base64 string.
-  // We must first decode it to get the actual email content.
-  const decodedBody = Buffer.from(rawBody, 'base64').toString('utf8');
-
-  // Now, find the XML content within the decoded email body.
-  const adfStartIndex = decodedBody.toLowerCase().indexOf('<adf>');
-  if (adfStartIndex === -1) {
-    logger.error("ADF start tag not found in decoded body:", { body: decodedBody });
-    throw new Error('Could not find the start of the <adf> tag in the decoded email.');
-  }
-
-  // Slice the string to get from the start of the ADF tag to the end.
-  const xmlContentWithHeaders = decodedBody.substring(adfStartIndex);
+  // Slice the string to get from the start of the XML tag to the end.
+  const xmlContentWithPotentiallyTrailingData = rawEmailContent.substring(xmlStartIndex);
 
   // Find the closing ADF tag to ensure we only parse valid XML.
-  const adfEndIndex = xmlContentWithHeaders.toLowerCase().lastIndexOf('</adf>');
+  const adfEndIndex = xmlContentWithPotentiallyTrailingData.toLowerCase().lastIndexOf('</adf>');
   if (adfEndIndex === -1) {
-    throw new Error('Could not find the end of the </adf> tag.');
+    logger.error('Could not find the end of the </adf> tag.');
+    return null;
   }
 
-  const xmlContent = xmlContentWithHeaders.substring(0, adfEndIndex + 6);
-
-  try {
-    const parsed = await parseStringPromise(xmlContent, {
-      explicitArray: false,
-      trim: true,
-      ignoreAttrs: true
-    });
-
-    if (!parsed.adf || !parsed.adf.prospect) {
-      throw new Error("ADF or prospect tag not found in the parsed XML.");
-    }
-
-    const prospect = parsed.adf.prospect;
-    const customer = prospect.customer || {};
-    const vehicle = prospect.vehicle || {};
-    const contact = customer.contact || {};
-
-    const customerName = contact.name || "Name not found";
-    const vehicleOfInterest = `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || "Vehicle not specified";
-    const comments = prospect.comments || "No comments provided.";
-    const creationDate = prospect.requestdate ? new Date(prospect.requestdate).getTime() : Date.now();
-
-    return {
-      customerName: customerName,
-      vehicle: vehicleOfInterest,
-      comments: comments,
-      status: 'new',
-      timestamp: creationDate,
-      suggestion: '',
-      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-correct-final-v5',
-    };
-  } catch (parseError) {
-    logger.error("XML Parsing Error:", { error: parseError, xml: xmlContent });
-    throw new Error(`XML parsing failed: ${parseError.message}`);
-  }
+  // Extract the clean XML content. The "+6" accounts for the length of "</adf>".
+  const cleanXml = xmlContentWithPotentiallyTrailingData.substring(0, adfEndIndex + 6);
+  return cleanXml;
 }
 
 /**
@@ -98,19 +58,58 @@ exports.receiveEmailLead = onRequest(
       return;
     }
     
-    // The rawBody is a Buffer, convert it to a string to get the base64 content.
-    const rawBodyAsString = req.rawBody ? req.rawBody.toString('utf8') : undefined;
+    // The rawBody is a Buffer containing the Base64 string from Apps Script.
+    // First, convert the buffer to a UTF-8 string to get the Base64 content.
+    const base64Content = req.rawBody ? req.rawBody.toString('utf8') : undefined;
 
-    if (!rawBodyAsString) {
+    if (!base64Content) {
       logger.error('Request body is missing.');
       res.status(400).json({ ok: false, error: 'Bad request: Missing body' });
       return;
     }
 
     try {
-      logger.log("Received raw body. Attempting to parse...");
-      const leadData = await parseRawEmail(rawBodyAsString);
-      logger.log("Successfully parsed lead data.");
+      // ** CRUCIAL STEP: Decode the Base64 content to get the raw email text. **
+      const decodedEmail = Buffer.from(base64Content, 'base64').toString('utf8');
+      
+      // ** NEW STEP: Extract only the XML portion from the decoded email. **
+      const xmlContent = extractXml(decodedEmail);
+      
+      if (!xmlContent) {
+        throw new Error('Could not extract valid XML from the email body.');
+      }
+
+      logger.log("Successfully decoded and extracted XML. Attempting to parse...");
+
+      const parsed = await parseStringPromise(xmlContent, {
+        explicitArray: false,
+        trim: true,
+        ignoreAttrs: true, // Simplified parsing
+      });
+
+      if (!parsed.adf || !parsed.adf.prospect) {
+        throw new Error("ADF or prospect tag not found in the parsed XML.");
+      }
+
+      const prospect = parsed.adf.prospect;
+      const customer = prospect.customer || {};
+      const vehicle = prospect.vehicle || {};
+      const contact = customer.contact || {};
+      const name = contact.name || {};
+
+      // Handle cases where name might be a simple string or an object with a "_" property
+      const customerName = typeof name === 'object' ? name._ : name;
+      
+      const leadData = {
+        customerName: customerName || "Name not found",
+        vehicle: `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || "Vehicle not specified",
+        comments: prospect.comments || "No comments provided.",
+        status: 'new',
+        timestamp: prospect.requestdate ? new Date(prospect.requestdate).getTime() : Date.now(),
+        suggestion: '',
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        source: 'gmail-webhook-vFinal', // Updated for tracking
+      };
       
       await db.collection('email_leads').add(leadData);
       logger.log('Successfully wrote lead data to Firestore.');
@@ -119,7 +118,8 @@ exports.receiveEmailLead = onRequest(
     } catch (e) {
       logger.error(`Critical lead processing failure: ${e.message}`, {
         errorStack: e.stack,
-        rawBodySample: rawBodyAsString.substring(0, 200) // Log a sample of the body
+        // Log a sample of the raw, undecoded body for debugging if needed
+        rawBodySample: base64Content.substring(0, 200) 
       });
       
       // Save the error record to Firestore for debugging.
@@ -132,7 +132,7 @@ exports.receiveEmailLead = onRequest(
         suggestion: '',
         receivedAt: admin.firestore.FieldValue.serverTimestamp(),
         source: 'gmail-webhook-error',
-        raw: rawBodyAsString 
+        raw: base64Content
       };
       
       try {
