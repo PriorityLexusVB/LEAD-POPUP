@@ -4,9 +4,10 @@ const { logger } = require('firebase-functions');
 const admin = require('firebase-admin');
 const { parseStringPromise } = require('xml2js');
 
-// Initialize Firebase Admin SDK against the correct project.
-// This is the only initialization needed.
-admin.initializeApp({ projectId: "priority-lead-sync-jts63" }); // <--- CORRECTED PROJECT ID
+// Initialize Firebase Admin SDK. By not passing any arguments, it will
+// automatically use the configuration of the project it is deployed to.
+// This is the most reliable method.
+admin.initializeApp();
 
 // Get a reference to the default Firestore database.
 const db = admin.firestore();
@@ -109,7 +110,7 @@ exports.receiveEmailLead = onRequest(
         timestamp: prospect.requestdate ? new Date(prospect.requestdate).getTime() : Date.now(),
         suggestion: '',
         receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-        source: 'gmail-webhook-vFinal', // Updated for tracking
+        source: 'gmail-webhook-vFinal-CorrectProject', // Updated for tracking
       };
       
       await db.collection('email_leads').add(leadData);
