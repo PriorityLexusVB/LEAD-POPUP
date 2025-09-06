@@ -14,8 +14,7 @@ export type Lead = {
     model: string | null;
     vin: string | null;
   };
-  subject: string | null;
-  comments: string; // Keep comments for internal use, map from subject
+  comments: string;
   status: LeadStatus;
   suggestion?: string;
   timestamp: number;
@@ -24,17 +23,5 @@ export type Lead = {
     nanoseconds: number;
   };
   source: string;
-  format: 'json' | 'adf';
+  format: 'json' | 'adf' | 'raw';
 };
-
-export type RawLead = {
-  raw: string;
-  receivedAt: {
-    seconds: number;
-    nanoseconds: number;
-  };
-  source: string;
-  headers: {
-    contentType: string | null;
-  }
-}

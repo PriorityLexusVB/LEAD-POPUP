@@ -11,7 +11,7 @@ import { collection, onSnapshot, query, orderBy, DocumentData, updateDoc, doc } 
 
 function isLead(doc: DocumentData): doc is Lead {
     const d = doc as any;
-    return d && d.customer && (d.subject || d.vehicle);
+    return d && d.customer && (d.comments || d.vehicle);
 }
 
 // Helper to construct a display name for the vehicle
@@ -37,22 +37,21 @@ export default function LeadList() {
         const data = doc.data();
         const docId = doc.id;
         
-        if (isLead(data)) {
-            const lead: Lead = {
-                id: docId,
-                customer: data.customer,
-                vehicle: data.vehicle,
-                subject: data.subject,
-                // The AI and card expect a 'comments' field. We can map the 'subject' to it.
-                comments: data.subject || 'No comments provided.',
-                status: data.status || 'new',
-                suggestion: data.suggestion,
-                // Use receivedAt for timestamping, falling back to a default if needed
-                timestamp: data.receivedAt?.seconds ? data.receivedAt.seconds * 1000 : Date.now(),
-                receivedAt: data.receivedAt,
-                source: data.source,
-                format: data.format,
-            };
+        // The data model from the real function has customer and vehicle as objects.
+        const lead: Lead = {
+            id: docId,
+            customer: data.customer || { name: 'Unknown Lead', email: null, phone: null },
+            vehicle: data.vehicle || { year: null, make: null, model: null, vin: null },
+            comments: data.comments || `Inquiry about ${data.vehicle?.year || ''} ${data.vehicle?.make || ''} ${data.vehicle?.model || ''}`.trim(),
+            status: data.status || 'new',
+            suggestion: data.suggestion || '',
+            timestamp: data.requestdate ? new Date(data.requestdate).getTime() : (data.receivedAt?.seconds ? data.receivedAt.seconds * 1000 : Date.now()),
+            receivedAt: data.receivedAt,
+            source: data.source,
+            format: data.format,
+        };
+
+        if (isLead(lead)) {
             newLeads.push(lead);
 
             // Notification logic
@@ -73,7 +72,7 @@ export default function LeadList() {
       setError(null);
     }, (err) => {
       console.error("Error fetching leads from Firestore: ", err);
-      setError("Failed to connect to Firestore. Please check your connection and Firebase setup.");
+      setError(`Failed to connect to Firestore: ${err.message}`);
     });
 
     return () => unsubscribe();
