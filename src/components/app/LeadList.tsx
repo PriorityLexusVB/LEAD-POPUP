@@ -31,7 +31,7 @@ export default function LeadList() {
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const newLeads: Lead[] = [];
-      const currentLeadIds = new Set(leads.map(l => l.id));
+      const isFirstLoad = leads.length === 0;
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
@@ -54,16 +54,12 @@ export default function LeadList() {
         if (isLead(lead)) {
             newLeads.push(lead);
 
-            // Notification logic
-            if (!currentLeadIds.has(lead.id) && lead.status === 'new') {
-                const leadTime = new Date(lead.timestamp).getTime();
-                const now = Date.now();
-                if (now - leadTime < 60000) { // Only notify for leads in the last minute
-                    sendNotification({
-                        title: `New Lead: ${lead.customer.name || 'Unknown'}`,
-                        body: `Interested in: ${formatVehicleName(lead.vehicle)}`,
-                    });
-                }
+            // Notify for new leads after the initial data load
+            if (!isFirstLoad && lead.status === 'new' && !leads.find(l => l.id === lead.id)) {
+                sendNotification({
+                    title: `New Lead: ${lead.customer.name || 'Unknown'}`,
+                    body: `Interested in: ${formatVehicleName(lead.vehicle)}`,
+                });
             }
         }
       });
@@ -76,7 +72,8 @@ export default function LeadList() {
     });
 
     return () => unsubscribe();
-  }, [leads]); // `leads` dependency is needed for notification logic
+    // The dependency array is intentionally empty to set up the listener only once.
+  }, []);
 
   useEffect(() => {
     const requestNotificationPermission = async () => {
