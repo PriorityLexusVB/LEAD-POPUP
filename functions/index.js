@@ -42,9 +42,14 @@ exports.receiveEmailLead = onRequest(
       // Assuming the body is Base64 encoded XML string from Apps Script
       const decodedXml = Buffer.from(rawBody, 'base64').toString('utf8');
       
-      const xmlStartIndex = decodedXml.indexOf('<?xml');
+      // Find the start of the XML content, which could be <?xml or <adf
+      let xmlStartIndex = decodedXml.indexOf('<?xml');
       if (xmlStartIndex === -1) {
-        throw new Error("Could not find '<?xml' tag in the decoded email content.");
+        xmlStartIndex = decodedXml.indexOf('<adf>');
+      }
+
+      if (xmlStartIndex === -1) {
+        throw new Error("Could not find '<?xml' or '<adf>' tag in the decoded email content.");
       }
       const xmlContent = decodedXml.substring(xmlStartIndex);
 
