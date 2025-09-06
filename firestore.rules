@@ -1,12 +1,12 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow reads from the email_leads collection for any signed-in user.
-    // This allows your web app to display the leads.
-    // Writes are denied, only your backend function can create new leads.
-    match /email_leads/{leadId} {
-      allow read: if request.auth != null;
+    // Allow public read access to the leads collection,
+    // but deny all writes. Leads are only created via the backend function.
+    match /leads_v2/{leadId} {
+      allow read: if true;
       allow write: if false;
     }
   }
