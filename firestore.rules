@@ -1,12 +1,12 @@
 rules_version = '2';
-
 service cloud.firestore {
-  // Explicitly target the 'leads' database
-  match /databases/leads/documents {
-    // Allow read/write access only on the email_leads collection
+  match /databases/{database}/documents {
+    // Allow anyone to read from the email_leads collection.
+    // In a production app, you would want to restrict this further,
+    // for example: allow read: if request.auth != null;
     match /email_leads/{leadId} {
-      allow read, update, create: if request.auth != null; // Secure rule: Allow authenticated users
-      allow list: if request.auth != null; // Allow authenticated users to list leads
+      allow read: if true;
+      allow write: if false; // Protect against client-side writes for now
     }
   }
 }
