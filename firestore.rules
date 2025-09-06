@@ -1,11 +1,18 @@
 
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow public read access to the leads_v2 collection for the web app
+
+    // Allow public read and list access to the leads collection
     match /leads_v2/{leadId} {
       allow read, list: if true;
-      allow write: if false; // Disallow client-side writes for now
+      allow write: if false; // Disallow client-side writes for security
+    }
+
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
