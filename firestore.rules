@@ -1,17 +1,12 @@
 rules_version = '2';
 
 service cloud.firestore {
-  match /databases/{database}/documents {
-    // This rule allows any client to read from the leads_v2 collection,
-    // but does not allow them to write. This is what your app needs.
-    match /leads_v2/{document=**} {
-      allow read: if true;
-      allow write: if false;
-    }
-
-    // This rule allows updating the status and suggestion fields on a lead.
-    match /leads_v2/{leadId} {
-      allow update: if request.resource.data.status != resource.data.status || request.resource.data.suggestion != resource.data.suggestion;
+  // Explicitly target the 'leads' database
+  match /databases/leads/documents {
+    // Allow read/write access only on the email_leads collection
+    match /email_leads/{leadId} {
+      allow read, update, create: if request.auth != null; // Secure rule: Allow authenticated users
+      allow list: if request.auth != null; // Allow authenticated users to list leads
     }
   }
 }
