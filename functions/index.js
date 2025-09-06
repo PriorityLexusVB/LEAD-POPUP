@@ -11,21 +11,21 @@ admin.initializeApp();
 const db = admin.firestore();
 
 /**
- * Extracts the ADF XML content from a raw email body.
- * @param {string} rawEmailContent The full raw content of the email.
+ * Extracts the ADF XML content from a raw, decoded email body.
+ * @param {string} decodedEmailContent The full raw content of the email, after Base64 decoding.
  * @return {string | null} The extracted XML string or null if not found.
  */
-function extractXml(rawEmailContent) {
-  // The ADF/XML data is often embedded within the email body.
+function extractXml(decodedEmailContent) {
+  // The ADF/XML data is embedded within the email body.
   // We need to find the start of the XML declaration.
-  const xmlStartIndex = rawEmailContent.indexOf('<?xml');
+  const xmlStartIndex = decodedEmailContent.indexOf('<?xml');
   if (xmlStartIndex === -1) {
     logger.error('Could not find the start of the XML tag in the email content.');
     return null;
   }
 
   // Slice the string to get from the start of the XML tag to the end.
-  const xmlContentWithPotentiallyTrailingData = rawEmailContent.substring(xmlStartIndex);
+  const xmlContentWithPotentiallyTrailingData = decodedEmailContent.substring(xmlStartIndex);
 
   // Find the closing ADF tag to ensure we only parse valid XML.
   const adfEndIndex = xmlContentWithPotentiallyTrailingData.toLowerCase().lastIndexOf('</adf>');
@@ -48,7 +48,7 @@ exports.receiveEmailLead = onRequest(
     secrets: ['GMAIL_WEBHOOK_SECRET']
   },
   async (req, res) => {
-    // Authenticate the request.
+    // 1. Authenticate the request.
     const providedSecret = req.get('X-Webhook-Secret');
     const expectedSecret = process.env.GMAIL_WEBHOOK_SECRET;
 
@@ -58,8 +58,7 @@ exports.receiveEmailLead = onRequest(
       return;
     }
     
-    // The rawBody is a Buffer containing the Base64 string from Apps Script.
-    // First, convert the buffer to a UTF-8 string to get the Base64 content.
+    // 2. Get the raw request body (which is a Base64 string from Apps Script).
     const base64Content = req.rawBody ? req.rawBody.toString('utf8') : undefined;
 
     if (!base64Content) {
@@ -69,10 +68,10 @@ exports.receiveEmailLead = onRequest(
     }
 
     try {
-      // ** CRUCIAL STEP: Decode the Base64 content to get the raw email text. **
+      // 3. **CRUCIAL STEP:** Decode the Base64 content to get the raw email text.
       const decodedEmail = Buffer.from(base64Content, 'base64').toString('utf8');
       
-      // ** NEW STEP: Extract only the XML portion from the decoded email. **
+      // 4. **CRUCIAL STEP:** Extract only the XML portion from the decoded email.
       const xmlContent = extractXml(decodedEmail);
       
       if (!xmlContent) {
@@ -81,6 +80,7 @@ exports.receiveEmailLead = onRequest(
 
       logger.log("Successfully decoded and extracted XML. Attempting to parse...");
 
+      // 5. Parse the clean XML.
       const parsed = await parseStringPromise(xmlContent, {
         explicitArray: false,
         trim: true,
@@ -96,7 +96,7 @@ exports.receiveEmailLead = onRequest(
       const vehicle = prospect.vehicle || {};
       const contact = customer.contact || {};
       const name = contact.name || {};
-
+      
       // Handle cases where name might be a simple string or an object with a "_" property
       const customerName = typeof name === 'object' ? name._ : name;
       
@@ -118,7 +118,6 @@ exports.receiveEmailLead = onRequest(
     } catch (e) {
       logger.error(`Critical lead processing failure: ${e.message}`, {
         errorStack: e.stack,
-        // Log a sample of the raw, undecoded body for debugging if needed
         rawBodySample: base64Content.substring(0, 200) 
       });
       
