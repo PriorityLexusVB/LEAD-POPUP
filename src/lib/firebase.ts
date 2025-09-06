@@ -16,7 +16,8 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-// Point to the default database to match the function.
-const db = getFirestore(app);
+// ** THE FIX IS HERE **
+// Connect to the specific 'leads' database, not the default one.
+const db = getFirestore(app, 'leads');
 
 export { db };
