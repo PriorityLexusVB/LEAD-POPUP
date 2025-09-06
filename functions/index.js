@@ -12,26 +12,21 @@ const db = admin.firestore();
 
 /**
  * Parses the raw email body to extract lead data.
- * @param {string} encodedBody The Base64 encoded email body.
+ * @param {string} rawBody The raw request body, expected to be Base64 encoded.
  * @return {Promise<object>} A promise that resolves with the parsed lead data.
  */
-async function parseRawEmail(encodedBody) {
-  if (!encodedBody || typeof encodedBody !== 'string' || encodedBody.length === 0) {
+async function parseRawEmail(rawBody) {
+  if (!rawBody || typeof rawBody !== 'string' || rawBody.length === 0) {
     throw new Error('Received empty or invalid request body.');
   }
 
-  let decodedBody;
-  try {
-    // Decode the Base64 encoded body to get the actual email content.
-    decodedBody = Buffer.from(encodedBody, 'base64').toString('utf8');
-  } catch (e) {
-    throw new Error(`Base64 decoding failed: ${e.message}`);
-  }
+  // The request body from Google Apps Script is a Base64 string.
+  // We must first decode it to get the actual email content.
+  const decodedBody = Buffer.from(rawBody, 'base64').toString('utf8');
 
   const adfStartIndex = decodedBody.toLowerCase().indexOf('<adf>');
   if (adfStartIndex === -1) {
-    // Log the decoded body for debugging if XML is not found.
-    console.error("ADF start tag not found in decoded body:", decodedBody);
+    logger.error("ADF start tag not found in decoded body:", { body: decodedBody });
     throw new Error('Could not find the start of the <adf> tag in the decoded email.');
   }
 
@@ -72,11 +67,10 @@ async function parseRawEmail(encodedBody) {
       timestamp: creationDate,
       suggestion: '',
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'gmail-webhook-final-v-correct', // Updated source for tracking
+      source: 'gmail-webhook-correct-final-v3', // Updated source for tracking
     };
   } catch (parseError) {
-    console.error("XML Parsing Error:", parseError);
-    console.error("Failed to parse XML content:", xmlContent);
+    logger.error("XML Parsing Error:", { error: parseError, xml: xmlContent });
     throw new Error(`XML parsing failed: ${parseError.message}`);
   }
 }
@@ -99,11 +93,11 @@ exports.receiveEmailLead = onRequest(
       res.status(401).send('Invalid webhook secret');
       return;
     }
+    
+    // The rawBody is a Buffer, convert it to a string to get the base64 content.
+    const rawBodyAsString = req.rawBody ? req.rawBody.toString('utf8') : undefined;
 
-    // Get the raw body, which is expected to be a Base64 string.
-    const rawBody = req.rawBody ? req.rawBody.toString('utf8') : undefined;
-
-    if (!rawBody) {
+    if (!rawBodyAsString) {
       logger.error('Request body is missing.');
       res.status(400).json({ ok: false, error: 'Bad request: Missing body' });
       return;
@@ -111,7 +105,7 @@ exports.receiveEmailLead = onRequest(
 
     try {
       logger.log("Received raw body. Attempting to parse...");
-      const leadData = await parseRawEmail(rawBody);
+      const leadData = await parseRawEmail(rawBodyAsString);
       logger.log("Successfully parsed lead data.");
       
       await db.collection('email_leads').add(leadData);
@@ -121,7 +115,7 @@ exports.receiveEmailLead = onRequest(
     } catch (e) {
       logger.error(`Critical lead processing failure: ${e.message}`, {
         errorStack: e.stack,
-        rawBodySample: rawBody.substring(0, 200) // Log a sample of the body that caused the error
+        rawBodySample: rawBodyAsString.substring(0, 200) // Log a sample of the body
       });
       
       // Save the error record to Firestore for debugging.
@@ -134,7 +128,7 @@ exports.receiveEmailLead = onRequest(
         suggestion: '',
         receivedAt: admin.firestore.FieldValue.serverTimestamp(),
         source: 'gmail-webhook-error',
-        raw: rawBody 
+        raw: rawBodyAsString 
       };
       
       try {
