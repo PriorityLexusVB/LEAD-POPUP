@@ -6,7 +6,6 @@ const { parseStringPromise } = require('xml2js');
 
 // Initialize Firebase Admin SDK. By not passing any arguments, it will
 // automatically use the configuration of the project it is deployed to.
-// This is the most reliable method.
 admin.initializeApp();
 
 // Get a reference to the default Firestore database.
@@ -20,9 +19,11 @@ const db = admin.firestore();
 function extractXml(decodedEmailContent) {
   // The ADF/XML data is embedded within the email body.
   // We need to find the start of the XML declaration.
+  logger.log("Attempting to find '<?xml' tag in decoded content.");
   const xmlStartIndex = decodedEmailContent.indexOf('<?xml');
+  
   if (xmlStartIndex === -1) {
-    logger.error('Could not find the start of the XML tag in the email content.');
+    logger.error("Could not find the start of the '<?xml' tag in the email content.");
     return null;
   }
 
@@ -32,12 +33,13 @@ function extractXml(decodedEmailContent) {
   // Find the closing ADF tag to ensure we only parse valid XML.
   const adfEndIndex = xmlContentWithPotentiallyTrailingData.toLowerCase().lastIndexOf('</adf>');
   if (adfEndIndex === -1) {
-    logger.error('Could not find the end of the </adf> tag.');
+    logger.error("Could not find the end of the '</adf>' tag.");
     return null;
   }
 
   // Extract the clean XML content. The "+6" accounts for the length of "</adf>".
   const cleanXml = xmlContentWithPotentiallyTrailingData.substring(0, adfEndIndex + 6);
+  logger.log("Successfully extracted clean XML.", { snippet: cleanXml.substring(0, 200) });
   return cleanXml;
 }
 
@@ -55,7 +57,7 @@ exports.receiveEmailLead = onRequest(
     const expectedSecret = process.env.GMAIL_WEBHOOK_SECRET;
 
     if (providedSecret !== expectedSecret) {
-      logger.warn("Unauthorized webhook attempt.");
+      logger.warn("Unauthorized webhook attempt. Provided secret did not match expected secret.");
       res.status(401).send('Invalid webhook secret');
       return;
     }
@@ -69,24 +71,43 @@ exports.receiveEmailLead = onRequest(
       return;
     }
 
+    // --- START DEBUGGING ---
+    logger.log("Received raw body. Length:", base64Content.length);
+    logger.log("Raw Body Snippet (first 500 chars):", base64Content.substring(0, 500));
+    // --- END DEBUGGING ---
+
+    let decodedEmail;
     try {
       // 3. **CRUCIAL STEP:** Decode the Base64 content to get the raw email text.
-      const decodedEmail = Buffer.from(base64Content, 'base64').toString('utf8');
+      decodedEmail = Buffer.from(base64Content, 'base64').toString('utf8');
       
-      // 4. **CRUCIAL STEP:** Extract only the XML portion from the decoded email.
-      const xmlContent = extractXml(decodedEmail);
+      // --- START DEBUGGING ---
+      logger.log("Successfully decoded Base64 content.");
+      logger.log("Decoded Email Snippet (first 500 chars):", decodedEmail.substring(0, 500));
+      // --- END DEBUGGING ---
+
+    } catch (e) {
+       logger.error("Base64 decoding failed.", { errorMessage: e.message });
+       res.status(400).json({ ok: false, error: "Bad request: Base64 decoding failed." });
+       return;
+    }
       
-      if (!xmlContent) {
-        throw new Error('Could not extract valid XML from the email body.');
-      }
+    // 4. **CRUCIAL STEP:** Extract only the XML portion from the decoded email.
+    const xmlContent = extractXml(decodedEmail);
+      
+    if (!xmlContent) {
+      logger.error("Could not extract valid XML from the decoded email body.");
+      res.status(400).json({ ok: false, error: "Bad request: Could not extract XML." });
+      return;
+    }
 
-      logger.log("Successfully decoded and extracted XML. Attempting to parse...");
-
+    try {
+      logger.log("Attempting to parse the extracted XML.");
       // 5. Parse the clean XML.
       const parsed = await parseStringPromise(xmlContent, {
         explicitArray: false,
         trim: true,
-        ignoreAttrs: true, // Simplified parsing
+        ignoreAttrs: true,
       });
 
       if (!parsed.adf || !parsed.adf.prospect) {
@@ -99,7 +120,6 @@ exports.receiveEmailLead = onRequest(
       const contact = customer.contact || {};
       const name = contact.name || {};
       
-      // Handle cases where name might be a simple string or an object with a "_" property
       const customerName = typeof name === 'object' ? name._ : name;
       
       const leadData = {
@@ -110,17 +130,17 @@ exports.receiveEmailLead = onRequest(
         timestamp: prospect.requestdate ? new Date(prospect.requestdate).getTime() : Date.now(),
         suggestion: '',
         receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-        source: 'gmail-webhook-vFinal-CorrectProject', // Updated for tracking
+        source: 'gmail-webhook-vFinal-CorrectProject-Debug',
       };
       
       await db.collection('email_leads').add(leadData);
-      logger.log('Successfully wrote lead data to Firestore.');
+      logger.log('Successfully wrote lead data to Firestore.', { leadId: leadData.customerName });
       res.status(200).send('OK');
 
     } catch (e) {
-      logger.error(`Critical lead processing failure: ${e.message}`, {
+      logger.error(`Critical lead processing failure during XML parsing or DB write: ${e.message}`, {
         errorStack: e.stack,
-        rawBodySample: base64Content.substring(0, 200) 
+        xmlContentBeingParsed: xmlContent // Log the exact XML that failed
       });
       
       // Save the error record to Firestore for debugging.
@@ -132,7 +152,7 @@ exports.receiveEmailLead = onRequest(
         timestamp: Date.now(),
         suggestion: '',
         receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-        source: 'gmail-webhook-error',
+        source: 'gmail-webhook-error-debug',
         raw: base64Content
       };
       
