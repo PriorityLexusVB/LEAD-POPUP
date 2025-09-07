@@ -1,26 +1,13 @@
 {
-  "name": "lead-pop-up",
-  "description": "Cloud Functions for Firebase",
-  "scripts": {
-    "lint": "eslint . --fix",
-    "serve": "firebase emulators:start --only functions",
-    "shell": "firebase functions:shell",
-    "start": "npm run shell",
-    "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
-  },
-  "engines": {
-    "node": "20"
-  },
+  "name": "receive-email-lead",
+  "version": "1.1.0",
   "main": "index.js",
+  "type": "module",
+  "engines": { "node": ">=18" },
   "dependencies": {
-    "firebase-admin": "^11.11.1",
-    "firebase-functions": "^4.9.0",
-    "xml2js": "^0.6.2"
-  },
-  "devDependencies": {
-    "eslint": "^8.15.0",
-    "eslint-config-google": "^0.14.0"
-  },
-  "private": true
+    "@google-cloud/functions-framework": "^3.4.0",
+    "@google-cloud/firestore": "^7.10.0",
+    "fast-xml-parser": "^4.5.0",
+    "mailparser": "^3.9.0"
+  }
 }

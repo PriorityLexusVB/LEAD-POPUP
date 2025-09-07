@@ -9,11 +9,9 @@ import { isPermissionGranted, requestPermission, sendNotification } from '@tauri
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, orderBy, DocumentData, updateDoc, doc } from 'firebase/firestore';
 
-function formatVehicleName(vehicle: Lead['vehicle']) {
-    if (!vehicle) return "Vehicle not specified";
-    return `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || "Vehicle not specified";
+function formatVehicleName(lead: Lead) {
+    return lead.vehicleName || "Vehicle not specified";
 }
-
 
 export default function LeadList() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -27,18 +25,10 @@ export default function LeadList() {
       const isFirstLoad = leads.length === 0;
 
       querySnapshot.forEach((doc) => {
-        const data = doc.data();
+        const data = doc.data() as Omit<Lead, 'id'>;
         const lead: Lead = {
             id: doc.id,
-            customer: data.customer,
-            vehicle: data.vehicle,
-            comments: data.comments,
-            status: data.status,
-            suggestion: data.suggestion,
-            timestamp: data.timestamp,
-            receivedAt: data.receivedAt,
-            source: data.source,
-            format: data.format,
+            ...data
         };
 
         if (lead && typeof lead.id === 'string' && lead.customer) {
@@ -47,8 +37,8 @@ export default function LeadList() {
             const alreadyExists = leads.some(l => l.id === lead.id);
             if (!isFirstLoad && lead.status === 'new' && !alreadyExists) {
                 sendNotification({
-                    title: `New Lead: ${lead.customer.name || 'Unknown'}`,
-                    body: `Interested in: ${formatVehicleName(lead.vehicle)}`,
+                    title: `New Lead: ${lead.customerName || 'Unknown'}`,
+                    body: `Interested in: ${formatVehicleName(lead)}`,
                 });
             }
         }
@@ -99,7 +89,7 @@ export default function LeadList() {
     <Tabs defaultValue="new" className="w-full">
       <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
         <TabsTrigger value="new">New Leads ({newLeads.length})</TabsTrigger>
-        <TabsTrigger value="handled">Handled ({handledLeads.length})</TabsTrigger>
+        <TabsTrigger value="handled">Handled ({handledLeads.length})</TapsTrigger>
       </TabsList>
       <TabsContent value="new">
         <div className="grid gap-6 pt-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

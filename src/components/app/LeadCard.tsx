@@ -27,17 +27,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-type LeadCardProps = {
-  lead: Lead;
-  onUpdate: (lead: Lead) => Promise<void>;
-};
-
-function formatVehicleName(vehicle: Lead['vehicle']) {
-    if (!vehicle) return "Vehicle not specified";
-    return `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || "Vehicle not specified";
-}
-
-export default function LeadCard({ lead, onUpdate }: LeadCardProps) {
+export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (lead: Lead) => Promise<void>; }) {
   const { toast } = useToast();
   const [isAiLoading, startAiTransition] = useTransition();
   const [suggestion, setSuggestion] = useState<string | undefined>(lead.suggestion);
@@ -50,13 +40,13 @@ export default function LeadCard({ lead, onUpdate }: LeadCardProps) {
     }
   }, [lead.timestamp]);
 
-  const vehicleName = formatVehicleName(lead.vehicle);
+  const vehicleName = lead.vehicleName || "Vehicle not specified";
 
   const handleGenerateSuggestion = () => {
     startAiTransition(async () => {
       try {
         const result = await getAiSuggestion({
-          customerName: lead.customer.name || 'Valued Customer',
+          customerName: lead.customerName || 'Valued Customer',
           vehicle: vehicleName,
           comments: lead.comments,
         });
@@ -78,17 +68,15 @@ export default function LeadCard({ lead, onUpdate }: LeadCardProps) {
       await onUpdate({...lead, status: 'handled'});
        toast({
           title: 'Lead Handled',
-          description: `${lead.customer.name || 'Lead'}'s lead has been marked as handled.`,
+          description: `${lead.customerName || 'Lead'}'s lead has been marked as handled.`,
         });
   }
-
-  const customerName = lead.customer.name || 'Unknown Lead';
 
   return (
     <Card className={cn('flex flex-col transition-all', isHandled && 'bg-card/50 opacity-70')}>
       <CardHeader>
         <div className="flex items-start justify-between">
-            <CardTitle className="font-headline text-lg">{customerName}</CardTitle>
+            <CardTitle className="font-headline text-lg">{lead.customerName}</CardTitle>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
