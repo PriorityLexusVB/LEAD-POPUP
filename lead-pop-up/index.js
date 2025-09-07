@@ -19,6 +19,102 @@ function sanitizeXml(str) {
   return str.replace(/&(?!(amp;|lt;|gt;|apos;|quot;))/g, '&amp;');
 }
 
+function normalizeWhitespace(s) {
+  return (s || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\u00A0/g, " ")
+    .split("\n")
+    .map(l => l.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function extractUrls(block) {
+  const urls = [];
+  const re = /\bhttps?:\/\/[^\s)"]+/gi;
+  let m; while ((m = re.exec(block))) urls.push(m[0]);
+  return urls;
+}
+
+// Question / Answer lines like:
+//   Question: ... 
+//   Check: yes|no|no response
+//   Response: <free text>
+function extractQAPairs(block) {
+  const lines = normalizeWhitespace(block).split("\n");
+  const qas = [];
+  for (let i = 0; i < lines.length; i++) {
+    const q = lines[i].match(/^Question:\s*(.+)$/i);
+    if (!q) continue;
+    let answer = null, check = null;
+    if (i + 1 < lines.length) {
+      const ck = lines[i + 1].match(/^Check:\s*(.+)$/i);
+      if (ck) { check = ck[1].trim(); i++; }
+    }
+    if (i + 1 < lines.length) {
+      const r = lines[i + 1].match(/^Response:\s*(.+)$/i);
+      if (r) { answer = r[1].trim(); i++; }
+    }
+    qas.push({ question: q[1].trim(), check: check || null, answer: answer || null });
+  }
+  return qas;
+}
+
+function extractSchedule(block) {
+  const dateM = block.match(/Schedule Date:\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+  const timeM = block.match(/Schedule Time:\s*([0-9]{2}:[0-9]{2}:[0-9]{2})/i);
+  return {
+    date: dateM ? dateM[1] : null,
+    time: timeM ? timeM[1] : null,
+  };
+}
+
+function extractPreferredContact(block) {
+  const m = block.match(/Preferred Contact Method[^:]*:\s*([A-Za-z]+)/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
+function extractTrade(block) {
+  const urlM = block.match(/Trade Summary:\s*(https?:\/\/\S+)/i);
+  return { tradeUrl: urlM ? urlM[1] : null };
+}
+
+function extractCampaign(block) {
+  // Flexible grab for common lines; extend as needed.
+  const src  = block.match(/(?:Primary PPC Campaign\s*)?Source:\s*([^\n]+)/i);
+  const name = block.match(/Campaign Name:\s*([^\n]+)/i);
+  const adg  = block.match(/AdGroup Name:\s*([^\n]+)/i);
+  const kw   = block.match(/Keyword:\s*([^\n]+)/i);
+  const clickId = block.match(/Click Id:\s*([^\n]+)/i);
+  return {
+    source: src ? src[1].trim() : null,
+    campaignName: name ? name[1].trim() : null,
+    adGroup: adg ? adg[1].trim() : null,
+    keyword: kw ? kw[1].trim() : null,
+    clickId: clickId ? clickId[1].trim() : null,
+  };
+}
+
+function parseCommentsToStructured(blockRaw) {
+  const block = normalizeWhitespace(blockRaw || "");
+  const { date, time } = extractSchedule(block);
+  const { tradeUrl } = extractTrade(block);
+  const preferredContact = extractPreferredContact(block);
+  const campaign = extractCampaign(block);
+  const urls = extractUrls(block);
+  const qas = extractQAPairs(block);
+  // Label a few known URLs for convenience
+  const clickPath = urls.find(u => /\/leadinfo\/clickpath\//i.test(u)) || null;
+  const returnShopper = urls.find(u => /\/iSpy\/Sales\//i.test(u)) || null;
+  return {
+    raw: blockRaw || null,
+    preferredContact, campaign, qas,
+    schedule: (date || time) ? { date, time } : null,
+    trade: tradeUrl ? { url: tradeUrl } : null,
+    links: { clickPath, returnShopper, all: urls }
+  };
+}
+
 
 /**
  * Receives email lead data from a webhook, parses it,
@@ -167,6 +263,14 @@ exports.receiveEmailLead = functions
                     phoneNumber = contact.phone;
                 }
             }
+            
+            // comments can be on customer or vehicle; prefer customer->comments
+            const commentsText =
+              (typeof customer.comments === "string" ? customer.comments :
+               typeof vehicleOfInterest?.comments === "string" ? vehicleOfInterest.comments :
+               null);
+
+            const structured = parseCommentsToStructured(commentsText);
 
 
             const leadData = {
@@ -174,24 +278,29 @@ exports.receiveEmailLead = functions
               source: "gmail-webhook",
               status: "new",
               suggestion: "",
-              comments:
-                (customer.comments) ||
-                `Inquiry about ${vehicleOfInterest.year || ''} ${vehicleOfInterest.make || ''} ${vehicleOfInterest.model || ''}`.trim(),
-              timestamp: prospect.requestdate ?
-                new Date(prospect.requestdate).getTime() :
-                Date.now(),
+              comments: structured.raw, // keep the original text
+              timestamp: prospect.requestdate ? new Date(prospect.requestdate).getTime() : Date.now(),
               receivedAt: admin.firestore.FieldValue.serverTimestamp(),
               vehicle: {
                 year: vehicleOfInterest.year || null,
                 make: vehicleOfInterest.make || null,
                 model: vehicleOfInterest.model || null,
                 vin: vehicleOfInterest.vin || null,
+                price: vehicleOfInterest.price || null,
+                odometer: vehicleOfInterest.odometer || null,
               },
               customer: {
                 name: customerName,
                 email: contact.email || null,
                 phone: phoneNumber,
+                preferredContact: structured.preferredContact,
+                postalCode: customer?.contact?.address?.postalcode || null,
               },
+              schedule: structured.schedule,     // { date, time } or null
+              trade: structured.trade,           // { url } or null
+              campaign: structured.campaign,     // { source, campaignName, adGroup, keyword, clickId }
+              links: structured.links,           // { clickPath, returnShopper, all:[…] }
+              questions: structured.qas,         // [{question, check, answer}, …]
             };
             
             await db.collection("email_leads").add(leadData);
