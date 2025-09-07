@@ -16,7 +16,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// Connect to the 'leads' database instance.
-const db = getFirestore(app, 'leads');
+// Connect to the (default) database instance.
+const db = getFirestore(app);
 
 export { db };
