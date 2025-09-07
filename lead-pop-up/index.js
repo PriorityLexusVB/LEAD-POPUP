@@ -38,6 +38,77 @@ function sanitizeXml(xmlString) {
     return xmlString.replace(/&(?!(amp;|lt;|gt;|quot;|apos;))/g, '&amp;');
 }
 
+// Minimal HTML entity decoder (enough for common cases)
+function decodeHtmlEntities(s) {
+  if (!s) return s;
+  return s
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'");
+}
+
+// Try multiple places: attachments, html (decoded), text, then raw
+async function getAdfXml(parsed, rfc822) {
+  // 1) Attachments: XML files or attachments that contain <adf ...></adf>
+  if (Array.isArray(parsed.attachments)) {
+    for (const a of parsed.attachments) {
+      try {
+        const ct = (a.contentType || "").toLowerCase();
+        const name = (a.filename || "").toLowerCase();
+        if (ct.includes("xml") || name.endsWith(".xml")) {
+          const xml = a.content.toString("utf8");
+          const hit = extractAdfXml(xml);
+          if (hit) {
+            console.log("ADF found in attachment:", a.filename || ct);
+            return hit;
+          }
+        }
+        // fallback: scan any text-like attachment
+        if (a.content && a.content.length) {
+          const maybe = a.content.toString("utf8");
+          const hit2 = extractAdfXml(maybe);
+          if (hit2) {
+            console.log("ADF found in attachment (generic scan):", a.filename || ct);
+            return hit2;
+          }
+        }
+      } catch (e) {
+        console.warn("Attachment scan error:", e);
+      }
+    }
+  }
+
+  // 2) HTML body may contain HTML-escaped XML
+  if (parsed.html) {
+    const decoded = decodeHtmlEntities(parsed.html.toString());
+    const hit = extractAdfXml(decoded);
+    if (hit) {
+      console.log("ADF found in decoded HTML body");
+      return hit;
+    }
+  }
+
+  // 3) Text body
+  if (parsed.text) {
+    const hit = extractAdfXml(parsed.text.toString());
+    if (hit) {
+      console.log("ADF found in text body");
+      return hit;
+    }
+  }
+
+  // 4) Raw RFC822 as a last resort
+  const hit = extractAdfXml(rfc822);
+  if (hit) {
+    console.log("ADF found in raw RFC822");
+    return hit;
+  }
+
+  return null;
+}
+
 
 function digitsOnly(x) {
   return (x || "").replace(/\D+/g, "");
@@ -385,13 +456,17 @@ HTTP("receiveEmailLead", async (req, res) => {
 
     // Parse email
     const parsed = await simpleParser(rfc822);
-    const emailText = (parsed.text || parsed.html || rfc822 || "").toString();
+    
+    // Extract ADF (attachments, html-decoded, text, raw)
+    let adfXml = await getAdfXml(parsed, rfc822);
+    if (!adfXml) {
+      // Log a short diagnostic to help track the shape of the email
+      console.error("ADF not found. Has attachments:", Array.isArray(parsed.attachments) ? parsed.attachments.length : 0,
+                    "Subject:", parsed.subject);
+      throw new Error("ADF XML not found in email");
+    }
 
-    // Extract ADF
-    let adfXml = extractAdfXml(emailText) || extractAdfXml(rfc822);
-    if (!adfXml) throw new Error("ADF XML not found in email");
-
-    // Sanitize and Parse XML
+    // Sanitize and parse
     adfXml = sanitizeXml(adfXml);
     const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "", allowBooleanAttributes: true });
     const adfObj = parser.parse(adfXml);
@@ -413,6 +488,14 @@ HTTP("receiveEmailLead", async (req, res) => {
         const leadRaw = leadData;
         const zres = LeadSchema.safeParse(leadRaw);
         if (!zres.success) {
+          await firestore.collection("email_leads_invalid").add({
+            createdAt: Firestore.FieldValue.serverTimestamp(),
+            reason: "schema_validation_failed",
+            messageId: parsed.messageId || null,
+            subject: parsed.subject || null,
+            adfXml,
+            errors: zres.error.flatten()
+          });
           // Archive for forensics even if invalid
           await archiveToGcs({ messageId: parsed.messageId, rfc822, adfXml });
           return res.status(422).json({
