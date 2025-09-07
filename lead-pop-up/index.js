@@ -1,32 +1,29 @@
 
-const {onRequest} = require("firebase-functions/v2/onRequest");
-const {logger} = require("firebase-functions/logger");
+const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const {parseStringPromise} = require("xml2js");
 
 // Initialize Firebase Admin SDK.
 admin.initializeApp();
 // Connect to the specific 'pop-up-leads' database.
-const db = admin.firestore("pop-up-leads");
+const db = admin.firestore();
 
 /**
  * Receives email lead data from a webhook, parses it,
- * and saves it to Firestore.
- * This version is simplified to match the expected data structure
- * of the front-end.
+ * and saves it to Firestore using v1 Cloud Functions syntax.
  */
-exports.receiveEmailLead = onRequest(
-    {
-      region: "us-central1",
+exports.receiveEmailLead = functions
+    .region("us-central1")
+    .runWith({
       secrets: ["GMAIL_WEBHOOK_SECRET"],
-    },
-    async (req, res) => {
+    })
+    .https.onRequest(async (req, res) => {
     // 1. Authenticate the request.
       const providedSecret = req.get("X-Webhook-Secret");
       const expectedSecret = process.env.GMAIL_WEBHOOK_SECRET;
 
       if (providedSecret !== expectedSecret) {
-        logger.warn("Unauthorized webhook attempt.");
+        functions.logger.warn("Unauthorized webhook attempt.");
         res.status(401).send("Invalid webhook secret");
         return;
       }
@@ -34,7 +31,7 @@ exports.receiveEmailLead = onRequest(
       const rawBody = req.rawBody ? req.rawBody.toString("utf8") : undefined;
 
       if (!rawBody) {
-        logger.error("Request body is missing.");
+        functions.logger.error("Request body is missing.");
         res.status(400).json({ok: false, error: "Bad request: Missing body"});
         return;
       }
@@ -76,17 +73,19 @@ exports.receiveEmailLead = onRequest(
         const fNamePart = nameParts.find((n) => n.$ && n.$.part === "first");
         const lNamePart = nameParts.find((n) => n.$ && n.$.part === "last");
 
-        const customerName = (fullNamePart && fullNamePart._) ||
-  `${(fNamePart && fNamePart["#text"]) || ""} ` +
-  `${(lNamePart && lNamePart["#text"]) || ""}`.trim() ||
-  "Unknown Lead";
+        const customerName =
+        (fullNamePart && fullNamePart._) ||
+        `${(fNamePart && fNamePart._) || ""} ${(lNamePart && lNamePart._) || ""}`
+            .trim() || "Unknown Lead";
+
 
         leadData = {
           format: "adf",
           source: "gmail-webhook",
           status: "new",
           suggestion: "",
-          comments: prospect.comments ||
+          comments:
+            prospect.comments ||
             `Inquiry about ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
           timestamp: prospect.requestdate ?
             new Date(prospect.requestdate).getTime() :
@@ -105,7 +104,7 @@ exports.receiveEmailLead = onRequest(
           },
         };
       } catch (e) {
-        logger.error(`Error parsing lead: ${e.message}`, {
+        functions.logger.error(`Error parsing lead: ${e.message}`, {
           errorStack: e.stack,
           rawBodySnippet: rawBody.substring(0, 500),
         });
@@ -126,9 +125,8 @@ exports.receiveEmailLead = onRequest(
 
       // Use the 'email_leads' collection to separate from old data.
       await db.collection("email_leads").add(leadData);
-      logger.log("Successfully wrote lead data to Firestore.", {
+      functions.logger.log("Successfully wrote lead data to Firestore.", {
         customer: leadData.customer.name,
       });
       res.status(200).send("OK");
-    },
-);
+    });
