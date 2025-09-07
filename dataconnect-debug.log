@@ -29,3 +29,4 @@ E0907 16:46:47.713564     771 watch.go:31] Failed to load config from "/home/use
 E0907 16:46:47.713623     771 watch.go:102] watchAllDir unable to walk dir `/home/user/studio/dataconnect`: lstat /home/user/studio/dataconnect: no such file or directory
 E0907 16:46:57.715905     771 watch.go:31] Failed to load config from "/home/user/studio/dataconnect": could not find dataconnect.yaml in `/home/user/studio/dataconnect`
 E0907 16:47:07.715955     771 watch.go:31] Failed to load config from "/home/user/studio/dataconnect": could not find dataconnect.yaml in `/home/user/studio/dataconnect`
+E0907 16:47:17.713562     771 watch.go:31] Failed to load config from "/home/user/studio/dataconnect": could not find dataconnect.yaml in `/home/user/studio/dataconnect`
