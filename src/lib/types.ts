@@ -1,13 +1,12 @@
 
 export type LeadStatus = 'new' | 'handled';
 
-// This type represents the new, detailed structure of a lead
-// as processed by the upgraded Cloud Function.
+// This type represents the Zod-validated structure of a lead document in Firestore.
 export type Lead = {
-  id: string; // The Firestore document ID
+  id: string; // The Firestore document ID (from the dedupe key)
   status: LeadStatus;
   suggestion?: string;
-  comments: string;
+  comments: string | null;
   timestamp: number;
   receivedAt: {
     seconds: number;
@@ -15,9 +14,9 @@ export type Lead = {
   };
   customerName: string;
   vehicleName: string;
-  
+
   meta: {
-    adfId: string | null;
+    adfId: string;
     requestDate: string | null;
     vendorName: string | null;
     providerName: string | null;
@@ -28,9 +27,10 @@ export type Lead = {
     firstName: string | null;
     lastName: string | null;
     email: string | null;
-    phone: string | null;
+    phoneDigits: string | null;
+    phonePretty: string | null;
     zip: string | null;
-    preferredContactMethod: string | null;
+    preferredContactMethod: 'email' | 'phone' | 'text' | null;
   };
 
   tradeIn: {
@@ -56,7 +56,7 @@ export type Lead = {
     price: number | null;
     odometer: number | null;
   } | null;
-
+  
   marketing: {
     clickPathUrl: string | null;
     primaryCampaignSource: string | null;
@@ -64,14 +64,26 @@ export type Lead = {
     networkType: string | null;
     eventDatetimeUtc: string | null;
     country: string | null;
+    utm?: {
+      source?: string | null;
+      medium?: string | null;
+      campaign?: string | null;
+      term?: string | null;
+      content?: string | null;
+    };
     doors: number | null;
     bodystyle: string | null;
     transmission: string | null;
     condition: string | null;
-    priceFromCdata: number | null;
-    _allParsedPairs: Record<string, string>;
+    _allParsedPairs?: Record<string, string>;
   };
   
+  optionalQuestions?: {
+      question: string;
+      check?: string;
+      response?: string | null;
+  }[];
+
   validation: {
     hasEmailOrPhone: boolean;
     emailLooksValid: boolean | null;

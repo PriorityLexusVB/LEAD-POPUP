@@ -41,14 +41,16 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
   }, [lead.timestamp]);
 
   const vehicleName = lead.vehicleName || "Vehicle not specified";
+  const customerName = lead.customerName || "Valued Customer";
+  const comments = lead.comments || "No comments provided.";
 
   const handleGenerateSuggestion = () => {
     startAiTransition(async () => {
       try {
         const result = await getAiSuggestion({
-          customerName: lead.customerName || 'Valued Customer',
+          customerName: customerName,
           vehicle: vehicleName,
-          comments: lead.comments,
+          comments: comments,
         });
         setSuggestion(result);
         await onUpdate({ ...lead, suggestion: result });
@@ -68,7 +70,7 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
       await onUpdate({...lead, status: 'handled'});
        toast({
           title: 'Lead Handled',
-          description: `${lead.customerName || 'Lead'}'s lead has been marked as handled.`,
+          description: `${customerName}'s lead has been marked as handled.`,
         });
   }
 
@@ -76,7 +78,7 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
     <Card className={cn('flex flex-col transition-all', isHandled && 'bg-card/50 opacity-70')}>
       <CardHeader>
         <div className="flex items-start justify-between">
-            <CardTitle className="font-headline text-lg">{lead.customerName}</CardTitle>
+            <CardTitle className="font-headline text-lg">{customerName}</CardTitle>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -97,7 +99,7 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
       <CardContent className="flex-grow space-y-4">
         <div className="flex items-start gap-3 rounded-lg border bg-muted/50 p-3 text-sm">
             <MessageSquare className="mt-1 h-4 w-4 flex-shrink-0 text-muted-foreground" />
-            <p className="text-muted-foreground">{lead.comments}</p>
+            <p className="text-muted-foreground">{comments}</p>
         </div>
 
         {(isAiLoading || suggestion) && (
