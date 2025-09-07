@@ -75,8 +75,10 @@ exports.receiveEmailLead = functions
 
         const customerName =
         (fullNamePart && fullNamePart._) ||
-        `${(fNamePart && fNamePart._) || ""} ${(lNamePart && lNamePart._) || ""}`
-            .trim() || "Unknown Lead";
+        `${(fNamePart && fNamePart._) || ""} ${
+          (lNamePart && lNamePart._) || ""
+        }`.trim() ||
+        "Unknown Lead";
 
 
         leadData = {
