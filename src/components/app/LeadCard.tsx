@@ -19,7 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle, Check, Sparkles, Car, MessageSquare } from 'lucide-react';
+import { AlertCircle, Check, Sparkles, Car, MessageSquare, User, Mail, Phone, Home } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -35,8 +35,10 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
   const [timeAgo, setTimeAgo] = useState('');
 
   useEffect(() => {
-    if (lead.timestamp) {
-      setTimeAgo(formatDistanceToNow(new Date(lead.timestamp), { addSuffix: true }));
+    // The timestamp is now nested inside the lead object
+    const timestamp = lead.timestamp;
+    if (timestamp) {
+      setTimeAgo(formatDistanceToNow(new Date(timestamp), { addSuffix: true }));
     }
   }, [lead.timestamp]);
 
@@ -82,7 +84,7 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant={isHandled ? 'secondary' : 'outline'} className={cn(!isHandled && "border-primary/50 text-primary")}>
+                  <Badge variant={isHandled ? 'secondary' : 'default'} className={cn(isHandled ? "font-normal" : "bg-primary")}>
                     {isHandled ? 'Handled' : 'New'}
                   </Badge>
                 </TooltipTrigger>
@@ -123,15 +125,15 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
             </Accordion>
         )}
       </CardContent>
-      <CardFooter className="flex flex-col gap-2 pt-4 sm:flex-row sm:justify-end">
+      <CardFooter className="flex flex-col items-stretch gap-2 pt-4 sm:flex-row sm:justify-end">
         {!suggestion && !isHandled && (
-          <Button onClick={handleGenerateSuggestion} disabled={isAiLoading} style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}} className="w-full sm:w-auto">
+          <Button onClick={handleGenerateSuggestion} disabled={isAiLoading} size="sm" className="w-full bg-accent text-accent-foreground hover:bg-accent/90 sm:w-auto">
             <Sparkles className="mr-2 h-4 w-4" />
             Suggest AI Reply
           </Button>
         )}
         {!isHandled && (
-            <Button variant="outline" onClick={handleMarkAsHandled} className="w-full sm:w-auto">
+            <Button variant="outline" size="sm" onClick={handleMarkAsHandled} className="w-full sm:w-auto">
                 <Check className="mr-2 h-4 w-4" />
                 Mark as Handled
             </Button>

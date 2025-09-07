@@ -18,6 +18,7 @@ export default function LeadList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Explicitly use the 'email_leads' collection to match the backend function
     const q = query(collection(db, 'email_leads'), orderBy('receivedAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -26,21 +27,26 @@ export default function LeadList() {
 
       querySnapshot.forEach((doc) => {
         const data = doc.data() as Omit<Lead, 'id'>;
-        const lead: Lead = {
-            id: doc.id,
-            ...data
-        };
+        
+        // Basic check to ensure the document has a valid structure before processing
+        if (data && data.customerName && data.vehicleName) {
+            const lead: Lead = {
+                id: doc.id,
+                ...data
+            };
 
-        if (lead && typeof lead.id === 'string' && lead.customer) {
             newLeads.push(lead);
 
+            // Check if it's a genuinely new lead before sending a notification
             const alreadyExists = leads.some(l => l.id === lead.id);
             if (!isFirstLoad && lead.status === 'new' && !alreadyExists) {
                 sendNotification({
-                    title: `New Lead: ${lead.customerName || 'Unknown'}`,
+                    title: `New Lead: ${lead.customerName}`,
                     body: `Interested in: ${formatVehicleName(lead)}`,
                 });
             }
+        } else {
+             console.warn("Filtered out a document with missing data:", doc.id, doc.data());
         }
       });
       
@@ -52,7 +58,7 @@ export default function LeadList() {
     });
 
     return () => unsubscribe();
-  }, []); 
+  }, []); // Note: `leads` is intentionally not in the dependency array to avoid re-subscribing on every change
 
   useEffect(() => {
     const requestNotificationPermission = async () => {
