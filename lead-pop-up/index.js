@@ -42,25 +42,22 @@ exports.receiveEmailLead = functions
         const decodedXml = Buffer.from(rawBody, "base64").toString("utf8");
 
         // Find the start of the XML content.
-        // It can start with <?xml or <adf>. We find the first occurrence.
-        const xmlStartIndex = decodedXml.indexOf("<?xml");
-        const adfStartIndex = decodedXml.indexOf("<adf>");
-
-        let startIndex = -1;
-
-        if (xmlStartIndex > -1 && adfStartIndex > -1) {
-          startIndex = Math.min(xmlStartIndex, adfStartIndex);
-        } else if (xmlStartIndex > -1) {
-          startIndex = xmlStartIndex;
-        } else {
-          startIndex = adfStartIndex;
+        const adfStartIndex = decodedXml.toLowerCase().indexOf("<adf>");
+        if (adfStartIndex === -1) {
+          throw new Error("Could not find the start of the <adf> tag.");
         }
 
-        if (startIndex === -1) {
-          throw new Error("Could not find XML start tag in the email body.");
+        // Find the end of the XML content to isolate it.
+        const adfEndIndex = decodedXml.toLowerCase().lastIndexOf("</adf>");
+        if (adfEndIndex === -1) {
+          throw new Error("Could not find the end of the </adf> tag.");
         }
 
-        const xmlContent = decodedXml.substring(startIndex);
+        // Extract the precise XML content.
+        const xmlContent = decodedXml.substring(
+            adfStartIndex,
+            adfEndIndex + "</adf>".length,
+        );
 
         const parsed = await parseStringPromise(xmlContent, {
           explicitArray: false,
@@ -131,7 +128,7 @@ exports.receiveEmailLead = functions
         };
       }
 
-      await db.collection("email_leads").add(leadData);
+      await db.collection("email_leads").add(leadAta);
       functions.logger.log("Successfully wrote lead data to Firestore.", {
         customer: leadData.customer.name,
       });
