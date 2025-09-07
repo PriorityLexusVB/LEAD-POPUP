@@ -1,15 +1,18 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow read access to the email_leads collection for the web app
-    match /email_leads/{leadId} {
-      allow read: if true;
-      allow write: if false; // Only the backend function can write
-    }
-
-    // Default deny all other access
+    // Default to locked down
     match /{document=**} {
       allow read, write: if false;
+    }
+
+    // Allow client-side read access to the email_leads collection.
+    // This allows the web application to display the leads.
+    // Writes are still disallowed to prevent modification from the client.
+    match /email_leads/{leadId} {
+      allow read: if true;
+      allow write: if false;
     }
   }
 }
