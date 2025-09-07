@@ -68,8 +68,12 @@ exports.receiveEmailLead = onRequest(
 
         // Extract name parts and construct a full name
         const nameParts = Array.isArray(name) ? name : [name];
-        const customerName = nameParts.find((n) => n.$?.part === "full")?._ ||
-                           `${nameParts.find((n) => n.$?.part === "first")?.["#text"] || ""} ${nameParts.find((n) => n.$?.part === "last")?.["#text"] || ""}`.trim() ||
+        const fullNamePart = nameParts.find((n) => n.$ && n.$.part === "full");
+        const firstNamePart = nameParts.find((n) => n.$ && n.$.part === "first");
+        const lastNamePart = nameParts.find((n) => n.$ && n.$.part === "last");
+
+        const customerName = (fullNamePart && fullNamePart._) ||
+                           `${(firstNamePart && firstNamePart["#text"]) || ""} ${(lastNamePart && lastNamePart["#text"]) || ""}`.trim() ||
                            "Unknown Lead";
 
         leadData = {
