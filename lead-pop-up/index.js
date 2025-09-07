@@ -39,10 +39,16 @@ exports.receiveEmailLead = functions
       let leadData;
 
       try {
-        // ** THE FIX IS HERE: **
-        // The entire body from Google Apps Script is Base64 encoded.
+        // The entire body from Google Apps Script can be Base64 encoded.
         // We must decode it first to get the plain text email content.
-        const decodedXml = Buffer.from(rawBody, "base64").toString("utf8");
+        // A try-catch block handles cases where it might not be encoded.
+        let decodedXml;
+        try {
+           decodedXml = Buffer.from(rawBody, "base64").toString("utf8");
+        } catch(e) {
+           decodedXml = rawBody;
+        }
+
 
         // Find the start of the XML content.
         const adfStartIndex = decodedXml.toLowerCase().indexOf("<adf>");
@@ -72,17 +78,17 @@ exports.receiveEmailLead = functions
         const customer = prospect.customer || {};
         const vehicleData = prospect.vehicle; // Can be an array or object
         const contact = customer.contact || {};
-        const name = contact.name || {};
+        const nameData = contact.name || {};
         
         // Handle single vs. multiple vehicles
         const vehicleArray = Array.isArray(vehicleData) ? vehicleData : [vehicleData];
         const vehicleOfInterest = vehicleArray.find(v => v && v.$ && v.$.interest === 'buy') || vehicleArray[0] || {};
 
 
-        const nameParts = Array.isArray(name) ? name : [name];
-        const fullNamePart = nameParts.find((n) => n.$ && n.$.part === "full");
-        const fNamePart = nameParts.find((n) => n.$ && n.$.part === "first");
-        const lNamePart = nameParts.find((n) => n.$ && n.$.part === "last");
+        const nameParts = Array.isArray(nameData) ? nameData : [nameData];
+        const fullNamePart = nameParts.find((n) => n && n.$ && n.$.part === "full");
+        const fNamePart = nameParts.find((n) => n && n.$ && n.$.part === "first");
+        const lNamePart = nameParts.find((n) => n && n.$ && n.$.part === "last");
 
         const customerName =
         (fullNamePart && fullNamePart._) ||
