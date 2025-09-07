@@ -1,9 +1,11 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /email_leads/{document=**} {
-      allow read: if true;
-      allow write: if false;
+    // WARNING: This is insecure. It allows anyone to read and write to your database.
+    // This should only be used for a brief testing period.
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }
