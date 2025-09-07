@@ -48,24 +48,65 @@ exports.receiveEmailLead = functions
         return;
       }
       
-      let decodedXml;
+      let decodedData;
       try {
          // Gmail uses base64url encoding; normalize it to standard base64 before decoding.
          const base64 = rawBody.replace(/-/g, '+').replace(/_/g, '/');
-         decodedXml = Buffer.from(base64, "base64").toString("utf8");
+         decodedData = Buffer.from(base64, "base64").toString("utf8");
       } catch (e) {
          // If decoding fails, assume it's already plain text.
-         decodedXml = rawBody;
+         decodedData = rawBody;
       }
       
+      // Attempt to parse as JSON first
+      try {
+        const jsonData = JSON.parse(decodedData);
+        if (jsonData.prospect && jsonData.prospect.customer) {
+            functions.logger.log("Processing lead as JSON.");
+            const prospect = jsonData.prospect;
+            const customer = prospect.customer || {};
+            const vehicle = prospect.vehicle || {};
+            const contact = customer.contact || {};
+
+             const leadData = {
+              format: "json",
+              source: "gmail-webhook",
+              status: "new",
+              suggestion: "",
+              comments: customer.comments || `Inquiry about ${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim(),
+              timestamp: prospect.requestdate ? new Date(prospect.requestdate).getTime() : Date.now(),
+              receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+              vehicle: {
+                year: vehicle.year || null,
+                make: vehicle.make || null,
+                model: vehicle.model || null,
+                vin: vehicle.vin || null,
+              },
+              customer: {
+                name: contact.name ? (contact.name.full || `${contact.name.first || ''} ${contact.name.last || ''}`.trim()) : 'Unknown Lead',
+                email: contact.email || null,
+                phone: contact.phone || null,
+              },
+            };
+            
+            await db.collection("email_leads").add(leadData);
+            functions.logger.log("Successfully wrote JSON lead data to Firestore.", { customer: leadData.customer.name });
+            res.status(200).send("OK. Processed JSON lead.");
+            return;
+        }
+      } catch (jsonError) {
+        functions.logger.log("Payload is not valid JSON, falling back to XML/ADF parsing.");
+      }
+
+
       // Find all individual ADF documents in the body, case-insensitively.
-      const adfDocs = decodedXml.match(/<adf>[\s\S]*?<\/adf>/gi);
+      const adfDocs = decodedData.match(/<adf>[\s\S]*?<\/adf>/gi);
       
       if (!adfDocs) {
           functions.logger.error("No <adf> documents found in the payload.", {
               rawBodySnippet: rawBody.substring(0, 500),
           });
-          res.status(400).json({ok: false, error: "Bad request: No ADF data found"});
+          res.status(400).json({ok: false, error: "Bad request: No ADF or valid JSON data found"});
           return;
       }
 
