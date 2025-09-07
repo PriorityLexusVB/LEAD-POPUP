@@ -108,7 +108,7 @@ exports.receiveEmailLead = functions
           status: "new",
           suggestion: "",
           comments:
-            (prospect.customer && prospect.customer.comments) ||
+            (customer.comments) ||
             `Inquiry about ${vehicleOfInterest.year || ''} ${vehicleOfInterest.make || ''} ${vehicleOfInterest.model || ''}`.trim(),
           timestamp: prospect.requestdate ?
             new Date(prospect.requestdate).getTime() :
