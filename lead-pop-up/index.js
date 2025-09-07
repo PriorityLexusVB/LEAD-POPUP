@@ -185,5 +185,4 @@ exports.receiveEmailLead = functions
 
       res.status(200).send(`OK. Processed ${processedCount} of ${adfDocs.length} leads.`);
     });
-
     
