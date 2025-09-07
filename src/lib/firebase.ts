@@ -15,7 +15,7 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-// Connect to the specific 'leads' database.
-const db = getFirestore(app, 'leads');
+// Connect to the specific 'pop-up-leads' database.
+const db = getFirestore(app, 'pop-up-leads');
 
 export { db };
