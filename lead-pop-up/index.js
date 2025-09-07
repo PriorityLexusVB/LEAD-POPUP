@@ -101,7 +101,7 @@ exports.receiveEmailLead = onRequest(
           errorStack: e.stack,
           rawBodySnippet: rawBody.substring(0, 500),
         });
-      // Fallback: save the raw data if parsing fails
+        // Fallback: save the raw data if parsing fails
         leadData = {
           customer: {name: "Unparsed Lead", email: null, phone: null},
           vehicle: {year: null, make: null, model: "Raw Data"},
