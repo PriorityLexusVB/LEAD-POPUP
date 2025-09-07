@@ -1,16 +1,13 @@
-
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow public read access to leads, but restrict writes to backend functions.
-    // This is secure because only your Cloud Function can modify the data.
+    // Allow read access to the email_leads collection for the web app
     match /email_leads/{leadId} {
       allow read: if true;
-      allow write: if false; // Deny client-side writes
+      allow write: if false; // Only the backend function can write
     }
 
-    // Default deny all other reads and writes
+    // Default deny all other access
     match /{document=**} {
       allow read, write: if false;
     }
