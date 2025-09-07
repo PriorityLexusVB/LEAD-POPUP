@@ -15,8 +15,8 @@ function isLead(data: DocumentData): data is Lead {
         typeof data.id === 'string' &&
         data.customer &&
         typeof data.customer.name === 'string' &&
-        data.vehicle &&
-        typeof data.vehicle.make === 'string'
+        data.vehicle
+        // Removed vehicle make check as it can be null for raw/unparsed leads
     );
 }
 
@@ -31,6 +31,7 @@ export default function LeadList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // The query now correctly references the 'db' instance connected to the 'leads' database.
     const q = query(collection(db, 'email_leads'), orderBy('receivedAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -52,7 +53,8 @@ export default function LeadList() {
             format: data.format,
         };
 
-        if (isLead(lead)) {
+        // A less strict check to handle unparsed leads gracefully
+        if (lead && typeof lead.id === 'string' && lead.customer) {
             newLeads.push(lead);
 
             // Notify for new leads after the initial data load
@@ -70,11 +72,11 @@ export default function LeadList() {
       setError(null);
     }, (err) => {
       console.error("Error fetching leads from Firestore: ", err);
-      setError(`Failed to connect to Firestore: ${err.message}`);
+      setError(`Failed to connect to Firestore: ${err.message}. Check security rules and database name.`);
     });
 
     return () => unsubscribe();
-  }, []); // isFirstLoad dependency removed to avoid re-subscribing.
+  }, []); // Empty dependency array is correct.
 
   useEffect(() => {
     const requestNotificationPermission = async () => {
@@ -92,6 +94,7 @@ export default function LeadList() {
 
   const updateLead = async (updatedLead: Lead) => {
     try {
+        // The update operation also correctly uses the 'db' instance for the 'leads' database.
         const leadRef = doc(db, 'email_leads', updatedLead.id);
         await updateDoc(leadRef, {
             status: updatedLead.status,

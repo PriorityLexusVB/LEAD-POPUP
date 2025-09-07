@@ -2,12 +2,9 @@
 rules_version = '2';
 
 service cloud.firestore {
-  match /databases/{database}/documents {
-    // Allow read access to the email_leads collection for any client.
-    // Writes are denied to prevent tampering from the browser.
-    // The Cloud Function uses admin privileges and bypasses these rules.
+  match /databases/leads/documents {
     match /email_leads/{leadId} {
-      allow read: if true;
+      allow read: if true; 
       allow write: if false;
     }
   }
