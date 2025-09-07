@@ -9,17 +9,6 @@ import { isPermissionGranted, requestPermission, sendNotification } from '@tauri
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, orderBy, DocumentData, updateDoc, doc } from 'firebase/firestore';
 
-function isLead(data: DocumentData): data is Lead {
-    return (
-        data &&
-        typeof data.id === 'string' &&
-        data.customer &&
-        typeof data.customer.name === 'string' &&
-        data.vehicle
-        // Removed vehicle make check as it can be null for raw/unparsed leads
-    );
-}
-
 function formatVehicleName(vehicle: Lead['vehicle']) {
     if (!vehicle) return "Vehicle not specified";
     return `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || "Vehicle not specified";
@@ -31,7 +20,6 @@ export default function LeadList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // The query now correctly references the 'db' instance connected to the 'leads' database.
     const q = query(collection(db, 'email_leads'), orderBy('receivedAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -53,11 +41,9 @@ export default function LeadList() {
             format: data.format,
         };
 
-        // A less strict check to handle unparsed leads gracefully
         if (lead && typeof lead.id === 'string' && lead.customer) {
             newLeads.push(lead);
 
-            // Notify for new leads after the initial data load
             const alreadyExists = leads.some(l => l.id === lead.id);
             if (!isFirstLoad && lead.status === 'new' && !alreadyExists) {
                 sendNotification({
@@ -72,11 +58,11 @@ export default function LeadList() {
       setError(null);
     }, (err) => {
       console.error("Error fetching leads from Firestore: ", err);
-      setError(`Failed to connect to Firestore: ${err.message}. Check security rules and database name.`);
+      setError(`Failed to connect to Firestore. Please check your connection and Firebase security rules.`);
     });
 
     return () => unsubscribe();
-  }, []); // Empty dependency array is correct.
+  }, []); 
 
   useEffect(() => {
     const requestNotificationPermission = async () => {
@@ -94,7 +80,6 @@ export default function LeadList() {
 
   const updateLead = async (updatedLead: Lead) => {
     try {
-        // The update operation also correctly uses the 'db' instance for the 'leads' database.
         const leadRef = doc(db, 'email_leads', updatedLead.id);
         await updateDoc(leadRef, {
             status: updatedLead.status,
