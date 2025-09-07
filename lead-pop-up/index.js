@@ -35,120 +35,113 @@ exports.receiveEmailLead = functions
         res.status(400).json({ok: false, error: "Bad request: Missing body"});
         return;
       }
-
-      let leadData;
-
+      
+      let decodedXml;
       try {
-        // The entire body from Google Apps Script can be Base64 encoded.
-        // We must decode it first to get the plain text email content.
-        // A try-catch block handles cases where it might not be encoded.
-        let decodedXml;
-        try {
-           decodedXml = Buffer.from(rawBody, "base64").toString("utf8");
-        } catch (e) {
-           decodedXml = rawBody;
-        }
-
-
-        // Find the start of the XML content.
-        const adfStartIndex = decodedXml.toLowerCase().indexOf("<adf>");
-        if (adfStartIndex === -1) {
-          throw new Error("Could not find the start of the <adf> tag.");
-        }
-
-        // Find the end of the XML content to isolate it.
-        const adfEndIndex = decodedXml.toLowerCase().lastIndexOf("</adf>");
-        if (adfEndIndex === -1) {
-          throw new Error("Could not find the end of the </adf> tag.");
-        }
-
-        // Extract the precise XML content.
-        const xmlContent = decodedXml.substring(
-            adfStartIndex,
-            adfEndIndex + "</adf>".length,
-        );
-
-        const parsed = await parseStringPromise(xmlContent, {
-          explicitArray: false,
-          trim: true,
-          ignoreAttrs: false,
-        });
-
-        const prospect = parsed.adf.prospect;
-        const customer = prospect.customer || {};
-        const vehicleData = prospect.vehicle; // Can be an array or object
-        const contact = customer.contact || {};
-        const nameData = contact.name || {};
-        
-        // Handle single vs. multiple vehicles
-        const vehicleArray = Array.isArray(vehicleData) ? vehicleData : [vehicleData];
-        const vehicleOfInterest = vehicleArray.find(v => v && v.$ && v.$.interest === 'buy') || vehicleArray[0] || {};
-
-
-        const nameParts = Array.isArray(nameData) ? nameData : [nameData];
-        const fullNamePart = nameParts.find((n) => n && n.$ && n.$.part === "full");
-        const fNamePart = nameParts.find((n) => n && n.$ && n.$.part === "first");
-        const lNamePart = nameParts.find((n) => n && n.$ && n.$.part === "last");
-
-        let customerName = "Unknown Lead";
-        if (fullNamePart && fullNamePart._) {
-            customerName = fullNamePart._;
-        } else if (fNamePart && fNamePart._ && lNamePart && lNamePart._) {
-            customerName = `${fNamePart._} ${lNamePart._}`.trim();
-        } else if (fNamePart && fNamePart._) {
-            customerName = fNamePart._;
-        } else if (lNamePart && lNamePart._) {
-            customerName = lNamePart._;
-        }
-
-
-        leadData = {
-          format: "adf",
-          source: "gmail-webhook",
-          status: "new",
-          suggestion: "",
-          comments:
-            (customer.comments) ||
-            `Inquiry about ${vehicleOfInterest.year || ''} ${vehicleOfInterest.make || ''} ${vehicleOfInterest.model || ''}`.trim(),
-          timestamp: prospect.requestdate ?
-            new Date(prospect.requestdate).getTime() :
-            Date.now(),
-          receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-          vehicle: {
-            year: vehicleOfInterest.year || null,
-            make: vehicleOfInterest.make || null,
-            model: vehicleOfInterest.model || null,
-            vin: vehicleOfInterest.vin || null,
-          },
-          customer: {
-            name: customerName,
-            email: contact.email || null,
-            phone: contact.phone || null,
-          },
-        };
+         decodedXml = Buffer.from(rawBody, "base64").toString("utf8");
       } catch (e) {
-        functions.logger.error(`Error parsing lead: ${e.message}`, {
-          errorStack: e.stack,
-          rawBodySnippet: rawBody.substring(0, 500),
-        });
-        // Fallback: save the raw data if parsing fails
-        leadData = {
-          customer: {name: "Unparsed Lead", email: null, phone: null},
-          vehicle: {year: null, make: null, model: "Raw Data"},
-          comments: "Parsing failed. Raw content attached.",
-          status: "new",
-          timestamp: Date.now(),
-          suggestion: "",
-          receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-          source: "gmail-webhook-error",
-          format: "raw",
-          raw: rawBody,
-        };
+         decodedXml = rawBody;
+      }
+      
+      // Find all individual ADF documents in the body
+      const adfDocs = decodedXml.match(/<adf>[\s\S]*?<\/adf>/gi);
+      
+      if (!adfDocs) {
+          functions.logger.error("No <adf> documents found in the payload.", {
+              rawBodySnippet: rawBody.substring(0, 500),
+          });
+          res.status(400).json({ok: false, error: "Bad request: No ADF data found"});
+          return;
       }
 
-      await db.collection("email_leads").add(leadData);
-      functions.logger.log("Successfully wrote lead data to Firestore.", {
-        customer: leadData.customer.name,
-      });
+      for (const adfDoc of adfDocs) {
+        let leadData;
+        try {
+            const parsed = await parseStringPromise(adfDoc, {
+                explicitArray: false,
+                trim: true,
+                ignoreAttrs: false,
+            });
+
+            const prospect = parsed.adf.prospect;
+            const customer = prospect.customer || {};
+            const vehicleData = prospect.vehicle; // Can be an array or object
+            const contact = customer.contact || {};
+            const nameData = contact.name || {};
+            
+            // Handle single vs. multiple vehicles
+            const vehicleArray = Array.isArray(vehicleData) ? vehicleData : [vehicleData];
+            const vehicleOfInterest = vehicleArray.find(v => v && v.$ && v.$.interest === 'buy') || vehicleArray[0] || {};
+
+            const nameParts = Array.isArray(nameData) ? nameData : [nameData];
+            const fullNamePart = nameParts.find((n) => n && n.$ && n.$.part === "full");
+            const fNamePart = nameParts.find((n) => n && n.$ && n.$.part === "first");
+            const lNamePart = nameParts.find((n) => n && n.$ && n.$.part === "last");
+
+            let customerName = "Unknown Lead";
+            if (fullNamePart && fullNamePart._) {
+                customerName = fullNamePart._;
+            } else if (fNamePart && fNamePart._ && lNamePart && lNamePart._) {
+                customerName = `${fNamePart._} ${lNamePart._}`.trim();
+            } else if (fNamePart && fNamePart._) {
+                customerName = fNamePart._;
+            } else if (lNamePart && lNamePart._) {
+                customerName = lNamePart._;
+            }
+
+            leadData = {
+              format: "adf",
+              source: "gmail-webhook",
+              status: "new",
+              suggestion: "",
+              comments:
+                (customer.comments) ||
+                `Inquiry about ${vehicleOfInterest.year || ''} ${vehicleOfInterest.make || ''} ${vehicleOfInterest.model || ''}`.trim(),
+              timestamp: prospect.requestdate ?
+                new Date(prospect.requestdate).getTime() :
+                Date.now(),
+              receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+              vehicle: {
+                year: vehicleOfInterest.year || null,
+                make: vehicleOfInterest.make || null,
+                model: vehicleOfInterest.model || null,
+                vin: vehicleOfInterest.vin || null,
+              },
+              customer: {
+                name: customerName,
+                email: contact.email || null,
+                phone: contact.phone || null,
+              },
+            };
+            
+            await db.collection("email_leads").add(leadData);
+            functions.logger.log("Successfully wrote lead data to Firestore.", {
+                customer: leadData.customer.name,
+            });
+
+        } catch (e) {
+            functions.logger.error(`Error parsing one of the ADF docs: ${e.message}`, {
+                errorStack: e.stack,
+                rawAdfDoc: adfDoc,
+            });
+            // Fallback: save the raw data if parsing fails for this specific doc
+            leadData = {
+              customer: {name: "Unparsed Lead", email: null, phone: null},
+              vehicle: {year: null, make: null, model: "Raw Data"},
+              comments: "Parsing failed. Raw content attached.",
+              status: "new",
+              timestamp: Date.now(),
+              suggestion: "",
+              receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+              source: "gmail-webhook-error",
+              format: "raw",
+              raw: adfDoc, // Save the specific failing XML block
+            };
+            await db.collection("email_leads").add(leadData);
+        }
+      }
+
       res.status(200).send("OK");
     });
+
+    
