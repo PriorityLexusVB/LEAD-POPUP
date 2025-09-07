@@ -5,8 +5,8 @@ const {parseStringPromise} = require("xml2js");
 
 // Initialize Firebase Admin SDK.
 admin.initializeApp();
-// Connect to the 'leads' database specifically.
-const db = admin.firestore().db('leads');
+// Connect to the default database.
+const db = admin.firestore();
 
 /**
  * Receives email lead data from a webhook, parses it,
