@@ -10,8 +10,10 @@ admin.initializeApp();
 const db = admin.firestore("leads");
 
 /**
- * Receives email lead data from a webhook, parses it, and saves it to Firestore.
- * This version is simplified to match the expected data structure of the front-end.
+ * Receives email lead data from a webhook, parses it,
+ * and saves it to Firestore.
+ * This version is simplified to match the expected data structure
+ * of the front-end.
  */
 exports.receiveEmailLead = onRequest(
     {
@@ -50,7 +52,9 @@ exports.receiveEmailLead = onRequest(
         }
 
         if (xmlStartIndex === -1) {
-          throw new Error("Could not find '<?xml' or '<adf>' tag in the decoded email content.");
+          throw new Error(
+              "Could not find '<?xml' or '<adf>' tag in the decoded email.",
+          );
         }
         const xmlContent = decodedXml.substring(xmlStartIndex);
 
@@ -69,20 +73,24 @@ exports.receiveEmailLead = onRequest(
         // Extract name parts and construct a full name
         const nameParts = Array.isArray(name) ? name : [name];
         const fullNamePart = nameParts.find((n) => n.$ && n.$.part === "full");
-        const firstNamePart = nameParts.find((n) => n.$ && n.$.part === "first");
-        const lastNamePart = nameParts.find((n) => n.$ && n.$.part === "last");
+        const fNamePart = nameParts.find((n) => n.$ && n.$.part === "first");
+        const lNamePart = nameParts.find((n) => n.$ && n.$.part === "last");
 
         const customerName = (fullNamePart && fullNamePart._) ||
-                           `${(firstNamePart && firstNamePart["#text"]) || ""} ${(lastNamePart && lastNamePart["#text"]) || ""}`.trim() ||
-                           "Unknown Lead";
+  `${(fNamePart && fNamePart["#text"]) || ""} ` +
+  `${(lNamePart && lNamePart["#text"]) || ""}`.trim() ||
+  "Unknown Lead";
 
         leadData = {
           format: "adf",
           source: "gmail-webhook",
           status: "new",
           suggestion: "",
-          comments: prospect.comments || `Inquiry about ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-          timestamp: prospect.requestdate ? new Date(prospect.requestdate).getTime() : Date.now(),
+          comments: prospect.comments ||
+            `Inquiry about ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+          timestamp: prospect.requestdate ?
+            new Date(prospect.requestdate).getTime() :
+            Date.now(),
           receivedAt: admin.firestore.FieldValue.serverTimestamp(),
           vehicle: {
             year: vehicle.year || null,
@@ -105,7 +113,7 @@ exports.receiveEmailLead = onRequest(
         leadData = {
           customer: {name: "Unparsed Lead", email: null, phone: null},
           vehicle: {year: null, make: null, model: "Raw Data"},
-          comments: `Parsing failed. Error: ${e.message}. Raw content attached.`,
+          comments: "Parsing failed. Raw content attached.",
           status: "new",
           timestamp: Date.now(),
           suggestion: "",
@@ -118,7 +126,9 @@ exports.receiveEmailLead = onRequest(
 
       // Use the 'email_leads' collection to separate from old data.
       await db.collection("email_leads").add(leadData);
-      logger.log("Successfully wrote lead data to Firestore.", {customer: leadData.customer.name});
+      logger.log("Successfully wrote lead data to Firestore.", {
+        customer: leadData.customer.name,
+      });
       res.status(200).send("OK");
     },
 );
