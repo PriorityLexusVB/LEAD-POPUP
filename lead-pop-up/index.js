@@ -39,26 +39,33 @@ exports.receiveEmailLead = functions
       let leadData;
 
       try {
-      // Assuming the body is Base64 encoded XML string from Apps Script
         const decodedXml = Buffer.from(rawBody, "base64").toString("utf8");
 
-        // Find the start of the XML content, which could be <?xml or <adf
-        let xmlStartIndex = decodedXml.indexOf("<?xml");
-        if (xmlStartIndex === -1) {
-          xmlStartIndex = decodedXml.indexOf("<adf>");
+        // Find the start of the XML content.
+        // It can start with <?xml or <adf>. We find the first occurrence.
+        const xmlStartIndex = decodedXml.indexOf("<?xml");
+        const adfStartIndex = decodedXml.indexOf("<adf>");
+
+        let startIndex = -1;
+
+        if (xmlStartIndex > -1 && adfStartIndex > -1) {
+          startIndex = Math.min(xmlStartIndex, adfStartIndex);
+        } else if (xmlStartIndex > -1) {
+          startIndex = xmlStartIndex;
+        } else {
+          startIndex = adfStartIndex;
         }
 
-        if (xmlStartIndex === -1) {
-          throw new Error(
-              "Could not find '<?xml' or '<adf>' tag in the decoded email.",
-          );
+        if (startIndex === -1) {
+          throw new Error("Could not find XML start tag in the email body.");
         }
-        const xmlContent = decodedXml.substring(xmlStartIndex);
+
+        const xmlContent = decodedXml.substring(startIndex);
 
         const parsed = await parseStringPromise(xmlContent, {
           explicitArray: false,
           trim: true,
-          ignoreAttrs: false, // Keep attributes to find name parts
+          ignoreAttrs: false,
         });
 
         const prospect = parsed.adf.prospect;
@@ -67,7 +74,6 @@ exports.receiveEmailLead = functions
         const contact = customer.contact || {};
         const name = contact.name || {};
 
-        // Extract name parts and construct a full name
         const nameParts = Array.isArray(name) ? name : [name];
         const fullNamePart = nameParts.find((n) => n.$ && n.$.part === "full");
         const fNamePart = nameParts.find((n) => n.$ && n.$.part === "first");
@@ -125,7 +131,6 @@ exports.receiveEmailLead = functions
         };
       }
 
-      // Use the 'email_leads' collection to separate from old data.
       await db.collection("email_leads").add(leadData);
       functions.logger.log("Successfully wrote lead data to Firestore.", {
         customer: leadData.customer.name,
