@@ -15,7 +15,7 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-// Connect to the default database to match the Cloud Function.
-const db = getFirestore(app);
+// Connect to the 'leads' database to match the Cloud Function and rules.
+const db = getFirestore(app, 'leads');
 
 export { db };
