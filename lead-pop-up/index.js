@@ -94,7 +94,10 @@ exports.receiveEmailLead = functions
                 customerName = fNamePart._;
             } else if (lNamePart && lNamePart._) {
                 customerName = lNamePart._;
+            } else if (typeof contact.name === 'string') {
+                customerName = contact.name;
             }
+
 
             // Handle phone numbers which can be an array
             let phoneNumber = null;
