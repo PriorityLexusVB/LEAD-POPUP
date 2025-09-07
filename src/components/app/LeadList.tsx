@@ -9,21 +9,20 @@ import { isPermissionGranted, requestPermission, sendNotification } from '@tauri
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, orderBy, DocumentData, updateDoc, doc } from 'firebase/firestore';
 
-function isLead(doc: DocumentData): doc is Lead {
-    const d = doc as any;
-    // Check for new nested structure OR old flat structure
-    return d && (d.customer || d.customerName) && (d.comments || d.vehicle);
+function isLead(data: DocumentData): data is Lead {
+    return (
+        data &&
+        typeof data.id === 'string' &&
+        data.customer &&
+        typeof data.customer.name === 'string' &&
+        data.vehicle &&
+        typeof data.vehicle.make === 'string'
+    );
 }
 
-// Helper to construct a display name for the vehicle
-function formatVehicleName(vehicle: Lead['vehicle'], oldVehicleString?: string) {
-    if (vehicle && (vehicle.make || vehicle.model || vehicle.year)) {
-      return `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || "Vehicle not specified";
-    }
-    if(oldVehicleString) {
-        return oldVehicleString;
-    }
-    return "Vehicle not specified";
+function formatVehicleName(vehicle: Lead['vehicle']) {
+    if (!vehicle) return "Vehicle not specified";
+    return `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || "Vehicle not specified";
 }
 
 
@@ -32,7 +31,6 @@ export default function LeadList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Corrected to listen to the 'email_leads' collection
     const q = query(collection(db, 'email_leads'), orderBy('receivedAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -40,41 +38,29 @@ export default function LeadList() {
       const isFirstLoad = leads.length === 0;
 
       querySnapshot.forEach((doc) => {
-        const data = doc.data() as any; // Use any to handle both old and new structures
-        const docId = doc.id;
-        
-        // ** THE FIX IS HERE: **
-        // Adapt to both old (flat) and new (nested) data structures.
+        const data = doc.data();
         const lead: Lead = {
-            id: docId,
-            customer: data.customer || { name: data.customerName || 'Unknown Lead', email: null, phone: null },
-            vehicle: data.vehicle || { year: null, make: null, model: data.vehicle || null, vin: null },
-            comments: data.comments || `Inquiry about`,
-            status: data.status || 'new',
-            suggestion: data.suggestion || '',
-            timestamp: data.timestamp || (data.receivedAt?.seconds ? data.receivedAt.seconds * 1000 : Date.now()),
+            id: doc.id,
+            customer: data.customer,
+            vehicle: data.vehicle,
+            comments: data.comments,
+            status: data.status,
+            suggestion: data.suggestion,
+            timestamp: data.timestamp,
             receivedAt: data.receivedAt,
             source: data.source,
             format: data.format,
         };
 
-        // The old format might just have a string for vehicle, let's pass it to formatVehicleName
-        const vehicleDisplayName = formatVehicleName(lead.vehicle, typeof data.vehicle === 'string' ? data.vehicle : undefined);
-         
-        // Re-assign vehicle as an object for consistency in the app
-        if (typeof data.vehicle === 'string') {
-            lead.vehicle.model = data.vehicle;
-        }
-
-
         if (isLead(lead)) {
             newLeads.push(lead);
 
             // Notify for new leads after the initial data load
-            if (!isFirstLoad && lead.status === 'new' && !leads.find(l => l.id === lead.id)) {
+            const alreadyExists = leads.some(l => l.id === lead.id);
+            if (!isFirstLoad && lead.status === 'new' && !alreadyExists) {
                 sendNotification({
                     title: `New Lead: ${lead.customer.name || 'Unknown'}`,
-                    body: `Interested in: ${vehicleDisplayName}`,
+                    body: `Interested in: ${formatVehicleName(lead.vehicle)}`,
                 });
             }
         }
@@ -88,8 +74,7 @@ export default function LeadList() {
     });
 
     return () => unsubscribe();
-    // The dependency array is intentionally empty to set up the listener only once.
-  }, []);
+  }, []); // isFirstLoad dependency removed to avoid re-subscribing.
 
   useEffect(() => {
     const requestNotificationPermission = async () => {
