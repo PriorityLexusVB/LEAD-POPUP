@@ -9,6 +9,18 @@ admin.initializeApp();
 const db = admin.firestore();
 
 /**
+ * Sanitizes an XML string by replacing ampersands that are not part of a valid XML entity.
+ * This prevents parsing errors from characters like &mdash;.
+ * @param {string} str The XML string to sanitize.
+ * @return {string} The sanitized XML string.
+ */
+function sanitizeXml(str) {
+  // This regex looks for an ampersand that is NOT followed by 'amp;', 'lt;', 'gt;', 'apos;', or 'quot;'
+  return str.replace(/&(?!(amp;|lt;|gt;|apos;|quot;))/g, '&amp;');
+}
+
+
+/**
  * Receives email lead data from a webhook, parses it,
  * and saves it to Firestore.
  */
@@ -38,8 +50,9 @@ exports.receiveEmailLead = functions
       
       let decodedXml;
       try {
-         // The body may be base64 encoded.
-         decodedXml = Buffer.from(rawBody, "base64").toString("utf8");
+         // Gmail uses base64url encoding; normalize it to standard base64 before decoding.
+         const base64 = rawBody.replace(/-/g, '+').replace(/_/g, '/');
+         decodedXml = Buffer.from(base64, "base64").toString("utf8");
       } catch (e) {
          // If decoding fails, assume it's already plain text.
          decodedXml = rawBody;
@@ -59,7 +72,9 @@ exports.receiveEmailLead = functions
       let processedCount = 0;
       for (const adfDoc of adfDocs) {
         try {
-            const parsed = await parseStringPromise(adfDoc, {
+            // Sanitize the XML doc to handle invalid entities before parsing.
+            const safeDoc = sanitizeXml(adfDoc);
+            const parsed = await parseStringPromise(safeDoc, {
                 explicitArray: false, // Prevents single elements from being wrapped in an array
                 trim: true,
                 ignoreAttrs: false, // Keep attributes to check 'interest' and 'part'
@@ -170,3 +185,5 @@ exports.receiveEmailLead = functions
 
       res.status(200).send(`OK. Processed ${processedCount} of ${adfDocs.length} leads.`);
     });
+
+    
