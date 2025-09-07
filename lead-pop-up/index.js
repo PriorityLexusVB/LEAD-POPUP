@@ -39,6 +39,9 @@ exports.receiveEmailLead = functions
       let leadData;
 
       try {
+        // ** THE FIX IS HERE: **
+        // The entire body from Google Apps Script is Base64 encoded.
+        // We must decode it first to get the plain text email content.
         const decodedXml = Buffer.from(rawBody, "base64").toString("utf8");
 
         // Find the start of the XML content.
@@ -67,9 +70,14 @@ exports.receiveEmailLead = functions
 
         const prospect = parsed.adf.prospect;
         const customer = prospect.customer || {};
-        const vehicle = prospect.vehicle || {};
+        const vehicleData = prospect.vehicle; // Can be an array or object
         const contact = customer.contact || {};
         const name = contact.name || {};
+        
+        // Handle single vs. multiple vehicles
+        const vehicleArray = Array.isArray(vehicleData) ? vehicleData : [vehicleData];
+        const vehicleOfInterest = vehicleArray.find(v => v && v.$ && v.$.interest === 'buy') || vehicleArray[0] || {};
+
 
         const nameParts = Array.isArray(name) ? name : [name];
         const fullNamePart = nameParts.find((n) => n.$ && n.$.part === "full");
@@ -91,16 +99,16 @@ exports.receiveEmailLead = functions
           suggestion: "",
           comments:
             prospect.comments ||
-            `Inquiry about ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+            `Inquiry about ${vehicleOfInterest.year} ${vehicleOfInterest.make} ${vehicleOfInterest.model}`,
           timestamp: prospect.requestdate ?
             new Date(prospect.requestdate).getTime() :
             Date.now(),
           receivedAt: admin.firestore.FieldValue.serverTimestamp(),
           vehicle: {
-            year: vehicle.year || null,
-            make: vehicle.make || null,
-            model: vehicle.model || null,
-            vin: vehicle.vin || null,
+            year: vehicleOfInterest.year || null,
+            make: vehicleOfInterest.make || null,
+            model: vehicleOfInterest.model || null,
+            vin: vehicleOfInterest.vin || null,
           },
           customer: {
             name: customerName,
@@ -128,7 +136,7 @@ exports.receiveEmailLead = functions
         };
       }
 
-      await db.collection("email_leads").add(leadAta);
+      await db.collection("email_leads").add(leadData);
       functions.logger.log("Successfully wrote lead data to Firestore.", {
         customer: leadData.customer.name,
       });
