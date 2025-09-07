@@ -1,3 +1,4 @@
+
 import { HTTP } from "@google-cloud/functions-framework";
 import { simpleParser } from "mailparser";
 import { XMLParser } from "fast-xml-parser";
@@ -29,6 +30,14 @@ function extractAdfXml(str) {
   const m = str.match(/<\?xml[\s\S]*?<adf[\s\S]*?<\/adf>/i);
   return m ? m[0] : null;
 }
+
+// Sanitize non-standard XML entities before parsing.
+function sanitizeXml(xmlString) {
+    if (!xmlString) return xmlString;
+    // Replaces ampersands that are not part of a valid XML entity.
+    return xmlString.replace(/&(?!(amp;|lt;|gt;|quot;|apos;))/g, '&amp;');
+}
+
 
 function digitsOnly(x) {
   return (x || "").replace(/\D+/g, "");
@@ -338,7 +347,7 @@ async function archiveToGcs(opts) {
 async function markProcessedIfNew(messageId, adfId) {
   const key = `${messageId || "no-msgid"}__${adfId || "no-adfid"}`;
   const ref = firestore.collection(DEDUPE_COLL).doc(key);
-  const existing = await ref.get();
+const existing = await ref.get();
   if (existing.exists) return { isDuplicate: true, docId: key };
   await ref.set({
     messageId: messageId || null,
@@ -379,10 +388,11 @@ HTTP("receiveEmailLead", async (req, res) => {
     const emailText = (parsed.text || parsed.html || rfc822 || "").toString();
 
     // Extract ADF
-    const adfXml = extractAdfXml(emailText) || extractAdfXml(rfc822);
+    let adfXml = extractAdfXml(emailText) || extractAdfXml(rfc822);
     if (!adfXml) throw new Error("ADF XML not found in email");
 
-    // XML → JSON
+    // Sanitize and Parse XML
+    adfXml = sanitizeXml(adfXml);
     const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "", allowBooleanAttributes: true });
     const adfObj = parser.parse(adfXml);
 
@@ -440,3 +450,5 @@ HTTP("receiveEmailLead", async (req, res) => {
     return res.status(400).json({ ok: false, error: String(err.message || err) });
   }
 });
+
+    
