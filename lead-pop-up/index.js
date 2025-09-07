@@ -220,7 +220,7 @@ function normalizeAdf(adfObj) {
       clickPathUrl: campaign.clickPathUrl,
       primaryCampaignSource: campaign.primaryCampaignSource,
       adwordsClickId: campaign.adwordsClickId,
-networkType: campaign.networkType,
+      networkType: campaign.networkType,
       eventDatetimeUtc: campaign.eventDatetimeUtc,
       country: campaign.country,
       // echo a few common vehicle attributes if CDATA overrides exist:

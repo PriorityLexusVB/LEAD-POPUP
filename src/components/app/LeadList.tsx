@@ -89,7 +89,7 @@ export default function LeadList() {
     <Tabs defaultValue="new" className="w-full">
       <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
         <TabsTrigger value="new">New Leads ({newLeads.length})</TabsTrigger>
-        <TabsTrigger value="handled">Handled ({handledLeads.length})</TapsTrigger>
+        <TabsTrigger value="handled">Handled ({handledLeads.length})</TabsTrigger>
       </TabsList>
       <TabsContent value="new">
         <div className="grid gap-6 pt-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
