@@ -45,7 +45,7 @@ exports.receiveEmailLead = functions
         let decodedXml;
         try {
            decodedXml = Buffer.from(rawBody, "base64").toString("utf8");
-        } catch(e) {
+        } catch (e) {
            decodedXml = rawBody;
         }
 
@@ -90,12 +90,16 @@ exports.receiveEmailLead = functions
         const fNamePart = nameParts.find((n) => n && n.$ && n.$.part === "first");
         const lNamePart = nameParts.find((n) => n && n.$ && n.$.part === "last");
 
-        const customerName =
-        (fullNamePart && fullNamePart._) ||
-        `${(fNamePart && fNamePart._) || ""} ${
-          (lNamePart && lNamePart._) || ""
-        }`.trim() ||
-        "Unknown Lead";
+        let customerName = "Unknown Lead";
+        if (fullNamePart && fullNamePart._) {
+            customerName = fullNamePart._;
+        } else if (fNamePart && fNamePart._ && lNamePart && lNamePart._) {
+            customerName = `${fNamePart._} ${lNamePart._}`.trim();
+        } else if (fNamePart && fNamePart._) {
+            customerName = fNamePart._;
+        } else if (lNamePart && lNamePart._) {
+            customerName = lNamePart._;
+        }
 
 
         leadData = {
@@ -104,7 +108,7 @@ exports.receiveEmailLead = functions
           status: "new",
           suggestion: "",
           comments:
-            prospect.comments ||
+            prospect.customer.comments ||
             `Inquiry about ${vehicleOfInterest.year} ${vehicleOfInterest.make} ${vehicleOfInterest.model}`,
           timestamp: prospect.requestdate ?
             new Date(prospect.requestdate).getTime() :
