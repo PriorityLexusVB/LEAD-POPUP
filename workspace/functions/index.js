@@ -1,3 +1,4 @@
+
 // Firebase Functions v2 + Admin SDK version of the hardened parser
 
 const { onRequest } = require('firebase-functions/v2/onRequest');
