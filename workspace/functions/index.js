@@ -288,7 +288,7 @@ function normalizeAdf(adfObj) {
     interest: interest,
     marketing: {
       clickPathUrl: campaign.clickPathUrl,
-      primaryCampaignSource: pick('Primary PPC Campaign Source'),
+      primaryCampaignSource: campaign.primaryCampaignSource,
       adwordsClickId: campaign.adwordsClickId,
       networkType: campaign.networkType,
       eventDatetimeUtc: campaign.eventDatetimeUtc,
@@ -542,5 +542,3 @@ exports.receiveEmailLead = onRequest(
     }
   }
 );
-
-    
