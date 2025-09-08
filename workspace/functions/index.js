@@ -1,7 +1,7 @@
 // Firebase Functions v2 + Admin SDK version of the hardened parser
 
 const { onRequest } = require('firebase-functions/v2/onRequest');
-const { logger } = require('firebase-functions');
+const logger = require('firebase-functions/logger');                // ← fixed
 const admin = require('firebase-admin');
 const { simpleParser } = require('mailparser');
 const { XMLParser } = require('fast-xml-parser');
@@ -463,14 +463,14 @@ exports.receiveEmailLead = onRequest(
 
       if (!isDuplicate) {
         const savePayload = {
-          // This is the flattened data the UI expects
+          // flattened top-level fields for quick filters
           ...leadData,
-          // This is the fully structured data for detailed views
+          // full structured copy (optional, useful for detailed UI)
           lead: leadData,
           ingest: {
             receivedAt: new Date().toISOString(),
-            from: parsed.from && parsed.from.text || null,
-            to: parsed.to && parsed.to.text || null,
+            from: (parsed.from && parsed.from.text) || null,
+            to: (parsed.to && parsed.to.text) || null,
             source: 'gmail-webhook-v2'
           }
         };
@@ -490,7 +490,7 @@ exports.receiveEmailLead = onRequest(
       } catch (archiveErr) {
         logger.error('Failed to archive on error', archiveErr && archiveErr.message);
       }
-      return res.status(400).json({ ok: false, error: String(err && err.message || err) });
+      return res.status(400).json({ ok: false, error: String((err && err.message) || err) });
     }
   }
 );
