@@ -1,4 +1,3 @@
-
 // Firebase Functions v2 + Admin SDK version of the hardened parser
 
 const { onRequest } = require('firebase-functions/v2/onRequest');
@@ -406,7 +405,7 @@ async function saveLeadDoc(docId, payload) {
 
 // ---- Function (Firebase v2) ----
 exports.receiveEmailLead = onRequest(
-  { region: 'us-central1', secrets: ['GMAIL_WEBHOOK_SECRET'] },
+  { region: 'us-central1', secrets: ['GMAIL_WEBHOOK_SECRET'], minInstances: 1 },
   async (req, res) => {
     try {
       const providedSecret = req.get('X-Webhook-Secret');
@@ -491,7 +490,7 @@ exports.receiveEmailLead = onRequest(
       } catch (archiveErr) {
         logger.error('Failed to archive on error', archiveErr && archiveErr.message);
       }
-      return res.status(400).json({ ok: false, error: String(err && err.message || err) });
+      return res.status(400).json({ ok: false, error: String((err && err.message) || err) });
     }
   }
 );
