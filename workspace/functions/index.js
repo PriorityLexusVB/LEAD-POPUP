@@ -1,3 +1,4 @@
+
 // Firebase Functions v2 + Admin SDK version of the hardened parser
 
 const { onRequest } = require('firebase-functions/v2/onRequest');
@@ -485,12 +486,14 @@ exports.receiveEmailLead = onRequest(
         const rawStr =
           typeof req.body === 'string' ? req.body :
           (Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : '');
-        const msgId = req.get('X-Gmail-Message-I`m d') || `error-${Date.now()}`;
+        const msgId = req.get('X-Gmail-Message-Id') || `error-${Date.now()}`;
         await archiveToGcs({ messageId: msgId, rfc822: rawStr });
       } catch (archiveErr) {
         logger.error('Failed to archive on error', archiveErr && archiveErr.message);
       }
-      return res.status(400).json({ ok: false, error: String((err && err.message) || err) });
+      return res.status(400).json({ ok: false, error: String(err && err.message || err) });
     }
   }
 );
+
+    
