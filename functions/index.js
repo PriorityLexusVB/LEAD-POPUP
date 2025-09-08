@@ -245,7 +245,7 @@ function normalizeAdf(adfObj) {
     vin: buy.vin || null,
     stock: buy.stock || null,
     bodystyle: buy.bodystyle || campaign.bodystyle || null,
-    transmission: campaign.transmission || campaign.transmission || null,
+    transmission: buy.transmission || campaign.transmission || null,
     price: toNum(buy.price != null ? buy.price : campaign.price),
     odometer: toNum(buy.odometer)
   } : null;
@@ -546,3 +546,5 @@ exports.receiveEmailLead = onRequest(
     }
   }
 );
+
+    
