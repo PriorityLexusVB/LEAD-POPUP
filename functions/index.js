@@ -245,7 +245,7 @@ function normalizeAdf(adfObj) {
     vin: buy.vin || null,
     stock: buy.stock || null,
     bodystyle: buy.bodystyle || campaign.bodystyle || null,
-    transmission: buy.transmission || campaign.transmission || null,
+    transmission: campaign.transmission || campaign.transmission || null,
     price: toNum(buy.price != null ? buy.price : campaign.price),
     odometer: toNum(buy.odometer)
   } : null;
@@ -470,10 +470,14 @@ exports.receiveEmailLead = onRequest(
       // Extract ADF everywhere we can
       let adfXml = await getAdfXml(parsed, rfc822);
       if (!adfXml) {
-        logger.error('adf_not_found', { attachments: (parsed.attachments || []).length, subject: parsed.subject || null });
-        // Archive raw for forensics
-        try { await archiveToGcs({ messageId, rfc822 }); } catch (ae) { logger.error('archive_raw_failed', ae && ae.message); }
-        return res.status(400).json({ ok:false, error:'adf_not_found' });
+        logger.warn('adf_not_found (graceful_exit)', { 
+            messageId: messageId, 
+            subject: parsed.subject || null,
+            from: (parsed.from && parsed.from.text) || null,
+        });
+        // Archive raw for forensics, but don't treat as an error
+        try { await archiveToGcs({ messageId, rfc822 }); } catch (ae) { logger.error('archive_raw_failed_on_non_lead', ae && ae.message); }
+        return res.status(200).json({ ok:true, outcome:'not_a_lead_email' });
       }
 
       adfXml = sanitizeXml(adfXml);
@@ -542,4 +546,3 @@ exports.receiveEmailLead = onRequest(
     }
   }
 );
-    
