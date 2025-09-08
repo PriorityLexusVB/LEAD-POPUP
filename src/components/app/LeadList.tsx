@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -10,6 +9,7 @@ import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, orderBy, DocumentData, updateDoc, doc } from 'firebase/firestore';
 
 function formatVehicleName(lead: Lead) {
+    // Access the flattened vehicleName property for easy display
     return lead.vehicleName || "Vehicle not specified";
 }
 
@@ -18,7 +18,7 @@ export default function LeadList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Explicitly use the 'email_leads' collection to match the backend function
+    // The backend now saves to the 'email_leads' collection by default.
     const q = query(collection(db, 'email_leads'), orderBy('receivedAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -28,8 +28,9 @@ export default function LeadList() {
       querySnapshot.forEach((doc) => {
         const data = doc.data() as Omit<Lead, 'id'>;
         
-        // Basic check to ensure the document has a valid structure before processing
-        if (data && data.customerName && data.vehicleName) {
+        // The new data structure has a nested 'lead' object.
+        // We ensure the top-level fields for the UI are present.
+        if (data && data.customerName && data.vehicleName && data.lead) {
             const lead: Lead = {
                 id: doc.id,
                 ...data
@@ -46,7 +47,7 @@ export default function LeadList() {
                 });
             }
         } else {
-             console.warn("Filtered out a document with missing data:", doc.id, doc.data());
+             console.warn("Filtered out a document with missing or incorrect data structure:", doc.id, doc.data());
         }
       });
       
@@ -77,9 +78,12 @@ export default function LeadList() {
   const updateLead = async (updatedLead: Lead) => {
     try {
         const leadRef = doc(db, 'email_leads', updatedLead.id);
+        // We only update the fields that can change from the UI
         await updateDoc(leadRef, {
             status: updatedLead.status,
             suggestion: updatedLead.suggestion || '',
+            'lead.status': updatedLead.status,
+            'lead.suggestion': updatedLead.suggestion || ''
         });
     } catch(e) {
         console.error("Failed to update lead: ", e);

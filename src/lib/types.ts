@@ -1,9 +1,8 @@
-
 export type LeadStatus = 'new' | 'handled';
 
-// This type represents the Zod-validated structure of a lead document in Firestore.
-export type Lead = {
-  id: string; // The Firestore document ID (from the dedupe key)
+// This is the fully structured, Zod-validated lead object.
+// It exists inside the `lead` property of the top-level Firestore document.
+export type StructuredLead = {
   status: LeadStatus;
   suggestion?: string;
   comments: string | null;
@@ -90,4 +89,22 @@ export type Lead = {
     phoneDigits10: boolean | null;
     zipLooksValid: boolean | null;
   };
+};
+
+
+// This is the top-level type for the document stored in Firestore.
+// It includes the flattened fields for easy UI display, plus the full structured lead.
+export type Lead = {
+  id: string; // The Firestore document ID
+  status: LeadStatus;
+  suggestion?: string;
+  comments: string | null;
+  timestamp: number;
+  receivedAt: {
+    seconds: number;
+    nanoseconds: number;
+  };
+  customerName: string;
+  vehicleName: string;
+  lead: StructuredLead; // The fully structured lead object
 };

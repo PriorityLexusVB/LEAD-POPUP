@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useTransition, useEffect } from 'react';
@@ -35,13 +34,14 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
   const [timeAgo, setTimeAgo] = useState('');
 
   useEffect(() => {
-    // The timestamp is now nested inside the lead object
+    // The timestamp is a top-level field for easy access.
     const timestamp = lead.timestamp;
     if (timestamp) {
       setTimeAgo(formatDistanceToNow(new Date(timestamp), { addSuffix: true }));
     }
   }, [lead.timestamp]);
 
+  // Use the flattened properties for easy display.
   const vehicleName = lead.vehicleName || "Vehicle not specified";
   const customerName = lead.customerName || "Valued Customer";
   const comments = lead.comments || "No comments provided.";
@@ -84,7 +84,7 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant={isHandled ? 'secondary' : 'default'} className={cn(isHandled ? "font-normal" : "bg-primary")}>
+                  <Badge variant={isHandled ? 'secondary' : 'default'} className={cn('bg-primary', isHandled ? 'bg-card/80' : 'bg-primary')}>
                     {isHandled ? 'Handled' : 'New'}
                   </Badge>
                 </TooltipTrigger>
