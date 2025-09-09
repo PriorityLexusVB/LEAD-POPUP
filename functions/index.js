@@ -2,8 +2,8 @@
 // Parses ADF/XML from attachments, decoded HTML, text, or raw RFC822.
 // Validates with Zod, dedupes, archives (optional), and writes to Firestore.
 
-const { onRequest } = require('firebase-functions/v2/onRequest');
-const logger = require('firebase-functions/logger');
+const { onRequest } = require('firebase-functions/v2/https');   // <-- v2 import fix
+const logger = require('firebase-functions/logger');             // v2 logger
 const admin = require('firebase-admin');
 const { simpleParser } = require('mailparser');
 const { XMLParser } = require('fast-xml-parser');
@@ -160,12 +160,12 @@ async function getAdfXml(parsed, rfc822) {
         if (ct.indexOf('xml') >= 0 || name.endsWith('.xml')) {
           var xml = a.content.toString('utf8');
           var hit = extractAdfXml(xml);
-          if (hit) { logger.log('ADF found in attachment:', a.filename || ct); return hit; }
+          if (hit) { logger.info('ADF found in attachment:', a.filename || ct); return hit; }
         }
         if (a.content && a.content.length) {
           var maybe = a.content.toString('utf8');
           var hit2 = extractAdfXml(maybe);
-          if (hit2) { logger.log('ADF found in attachment (generic):', a.filename || ct); return hit2; }
+          if (hit2) { logger.info('ADF found in attachment (generic):', a.filename || ct); return hit2; }
         }
       } catch (e) { logger.warn('Attachment scan error:', e && e.message); }
     }
@@ -174,16 +174,16 @@ async function getAdfXml(parsed, rfc822) {
   if (parsed.html) {
     var decoded = decodeHtmlEntities(parsed.html.toString());
     var hit = extractAdfXml(decoded);
-    if (hit) { logger.log('ADF found in decoded HTML'); return hit; }
+    if (hit) { logger.info('ADF found in decoded HTML'); return hit; }
   }
   // 3) text
   if (parsed.text) {
     var hit3 = extractAdfXml(parsed.text.toString());
-    if (hit3) { logger.log('ADF found in text body'); return hit3; }
+    if (hit3) { logger.info('ADF found in text body'); return hit3; }
   }
   // 4) raw fallback
   var hit4 = extractAdfXml(rfc822);
-  if (hit4) { logger.log('ADF found in raw RFC822'); return hit4; }
+  if (hit4) { logger.info('ADF found in raw RFC822'); return hit4; }
   return null;
 }
 
@@ -528,7 +528,7 @@ exports.receiveEmailLead = onRequest(
         await saveLeadDoc(mk.docId, savePayload);
       }
 
-      logger.log('Saved lead', { adfId: leadData.meta.adfId, messageId, duplicate: mk.isDuplicate });
+      logger.info('Saved lead', { adfId: leadData.meta.adfId, messageId, duplicate: mk.isDuplicate });
       return res.status(200).json({ ok: true, duplicate: mk.isDuplicate, dedupeKey: mk.docId, messageId });
     } catch (err) {
       logger.error('receiveEmailLead_uncaught', (err && err.message) || String(err), { stack: err && err.stack });
