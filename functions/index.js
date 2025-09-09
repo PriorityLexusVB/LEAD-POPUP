@@ -546,5 +546,3 @@ exports.receiveEmailLead = onRequest(
     }
   }
 );
-
-    
