@@ -2,8 +2,8 @@
 // Parses ADF/XML from attachments, decoded HTML, text, or raw RFC822.
 // Validates with Zod, dedupes, archives (optional), and writes to Firestore.
 
-const { onRequest } = require('firebase-functions/v2/https');   // <-- v2 import fix
-const logger = require('firebase-functions/logger');             // v2 logger
+const { onRequest } = require('firebase-functions/v2/https');
+const logger = require('firebase-functions/logger');
 const admin = require('firebase-admin');
 const { simpleParser } = require('mailparser');
 const { XMLParser } = require('fast-xml-parser');
@@ -16,9 +16,9 @@ const storage = admin.storage();
 
 // ---- Config ----
 const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2MB
-const DEDUPE_COLL   = process.env.DEDUPE_COLL   || 'email_ingest';
-const LEADS_COLL    = process.env.LEADS_COLL    || 'email_leads';
-const ARCHIVE_BUCKET= process.env.ARCHIVE_BUCKET|| ''; // optional
+const DEDUPE_COLL   = process.env.DEDUPE_COLL    || 'email_ingest';
+const LEADS_COLL    = process.env.LEADS_COLL     || 'email_leads';
+const ARCHIVE_BUCKET= process.env.ARCHIVE_BUCKET || ''; // optional
 
 // ---- Helpers ----
 function base64UrlToUtf8(maybeB64Url) {
@@ -280,9 +280,9 @@ function normalizeAdf(adfObj) {
       lastName: lastName,
       email: email,
       phoneDigits: phoneDigits,
-      phonePretty: phonePrettyVal, // presentation layer format
+      phonePretty: phonePrettyVal,
       zip: zip,
-      preferredContactMethod: preferred // 'email' | 'phone' | 'text' | null
+      preferredContactMethod: preferred
     },
     tradeIn: tradeIn,
     interest: interest,
@@ -418,12 +418,11 @@ exports.receiveEmailLead = onRequest(
   {
     region: 'us-central1',
     secrets: ['GMAIL_WEBHOOK_SECRET'],
-    minInstances: 1,         // keep warm to avoid 503s
-    timeoutSeconds: 120,     // large bodies + parsing
-    memory: '512MiB'         // mailparser + XML can use RAM
+    // minInstances: 1,      // ← leave commented/removed to avoid the $4.50/month
+    memory: '256MiB',
+    timeoutSeconds: 120,
   },
   async (req, res) => {
-    // Early breadcrumbs (to debug 500s/cold starts)
     logger.info('receiveEmailLead: started', {
       cl: req.get('content-length') || null,
       ct: req.get('content-type') || null,
@@ -470,12 +469,11 @@ exports.receiveEmailLead = onRequest(
       // Extract ADF everywhere we can
       let adfXml = await getAdfXml(parsed, rfc822);
       if (!adfXml) {
-        logger.warn('adf_not_found (graceful_exit)', { 
-            messageId: messageId, 
-            subject: parsed.subject || null,
-            from: (parsed.from && parsed.from.text) || null,
+        logger.warn('adf_not_found (graceful_exit)', {
+          messageId: messageId,
+          subject: parsed.subject || null,
+          from: (parsed.from && parsed.from.text) || null,
         });
-        // Archive raw for forensics, but don't treat as an error
         try { await archiveToGcs({ messageId, rfc822 }); } catch (ae) { logger.error('archive_raw_failed_on_non_lead', ae && ae.message); }
         return res.status(200).json({ ok:true, outcome:'not_a_lead_email' });
       }
@@ -509,15 +507,15 @@ exports.receiveEmailLead = onRequest(
 
       // De-dupe
       const mk = await markProcessedIfNew(messageId, leadData.meta.adfId);
+
+      // Archive (optional)
       try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) { logger.error('archive_ok_failed', ae && ae.message); }
 
       // Persist (only once)
       if (!mk.isDuplicate) {
         const savePayload = {
-          // quick top-level fields
           ...leadData,
-          // full structured duplication (optional, UI convenience)
-          lead: leadData,
+          lead: leadData, // full structured copy for detail views
           ingest: {
             receivedAt: new Date().toISOString(),
             from: (parsed.from && parsed.from.text) || null,
@@ -530,9 +528,9 @@ exports.receiveEmailLead = onRequest(
 
       logger.info('Saved lead', { adfId: leadData.meta.adfId, messageId, duplicate: mk.isDuplicate });
       return res.status(200).json({ ok: true, duplicate: mk.isDuplicate, dedupeKey: mk.docId, messageId });
+
     } catch (err) {
       logger.error('receiveEmailLead_uncaught', (err && err.message) || String(err), { stack: err && err.stack });
-      // Best-effort archive of raw body
       try {
         const rawStr =
           (typeof req.body === 'string') ? req.body :
