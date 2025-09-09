@@ -9784,3 +9784,44 @@ E0909 14:22:36.320360    1013 watch.go:102] watchAllDir unable to walk dir `/hom
  {"metadata":{"emulator":{"name":"dataconnect"},"message":"E0909 14:25:16.317947    1013 watch.go:31] Failed to load config from \"/home/user/studio/dataconnect\": could not find dataconnect.yaml in `/home/user/studio/dataconnect`\n"}}
 [debug] [2025-09-09T14:25:26.326Z] E0909 14:25:26.326321    1013 watch.go:31] Failed to load config from "/home/user/studio/dataconnect": could not find dataconnect.yaml in `/home/user/studio/dataconnect`
  {"metadata":{"emulator":{"name":"dataconnect"},"message":"E0909 14:25:26.326321    1013 watch.go:31] Failed to load config from \"/home/user/studio/dataconnect\": could not find dataconnect.yaml in `/home/user/studio/dataconnect`\n"}}
+[debug] [2025-09-09T21:48:10.649Z] [Firebase Plugin] Activating Firebase extension.
+[debug] [2025-09-09T21:48:24.911Z] [Firebase Plugin] requireAuthWrapper
+[debug] [2025-09-09T21:48:24.916Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2025-09-09T21:48:24.917Z] > authorizing via signed-in user (rob.brasco@priorityautomotive.com)
+[debug] [2025-09-09T21:48:24.924Z] Checked if tokens are valid: false, expires at: 1757431033497
+[debug] [2025-09-09T21:48:24.925Z] Checked if tokens are valid: false, expires at: 1757431033497
+[debug] [2025-09-09T21:48:24.926Z] > refreshing access token with scopes: []
+[debug] [2025-09-09T21:48:24.929Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-09-09T21:48:24.930Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-09-09T21:48:25.022Z] [Firebase Plugin] VSCode notification server listening on port 40001
+[info] [Firebase Plugin] Starting Data Connect toolkit (version 2.12.0) on port 50001
+[debug] [2025-09-09T21:48:26.283Z] 'fdc build' failed with error: Unable to build your Data Connect schema and connectors (exit code 1): E0909 21:48:26.276328   87080 cmd.go:43] Error loading data connect config: could not find dataconnect.yaml in `/home/user/studio/dataconnect`
+ {"metadata":{"emulator":{"name":"dataconnect"},"message":"'fdc build' failed with error: Unable to build your Data Connect schema and connectors (exit code 1): E0909 21:48:26.276328   87080 cmd.go:43] Error loading data connect config: could not find dataconnect.yaml in `/home/user/studio/dataconnect`\n"}}
+[debug] [2025-09-09T21:48:26.285Z] Ignoring unsupported arg: auto_download {"metadata":{"emulator":{"name":"dataconnect"},"message":"Ignoring unsupported arg: auto_download"}}
+[debug] [2025-09-09T21:48:26.286Z] Ignoring unsupported arg: port {"metadata":{"emulator":{"name":"dataconnect"},"message":"Ignoring unsupported arg: port"}}
+[debug] [2025-09-09T21:48:26.287Z] Starting Data Connect Emulator with command {"binary":"/home/user/.cache/firebase/emulators/dataconnect-emulator-2.12.0","args":["--logtostderr","-v=2","dev","--listen=localhost:50001","--config_dir=/home/user/studio/dataconnect","--enable_output_schema_extensions=true","--enable_output_generated_sdk=true"],"optionalArgs":["listen","config_dir","enable_output_schema_extensions","enable_output_generated_sdk"],"joinArgs":true,"shell":false,"port":9399} {"metadata":{"emulator":{"name":"dataconnect"},"message":"Starting Data Connect Emulator with command {\"binary\":\"/home/user/.cache/firebase/emulators/dataconnect-emulator-2.12.0\",\"args\":[\"--logtostderr\",\"-v=2\",\"dev\",\"--listen=localhost:50001\",\"--config_dir=/home/user/studio/dataconnect\",\"--enable_output_schema_extensions=true\",\"--enable_output_generated_sdk=true\"],\"optionalArgs\":[\"listen\",\"config_dir\",\"enable_output_schema_extensions\",\"enable_output_generated_sdk\"],\"joinArgs\":true,\"shell\":false,\"port\":9399}"}}
+[info] i  dataconnect: Data Connect Emulator logging to dataconnect-debug.log {"metadata":{"emulator":{"name":"dataconnect"},"message":"Data Connect Emulator logging to dataconnect-debug.log"}}
+[debug] [2025-09-09T21:48:26.511Z] E0909 21:48:26.457956   87086 dev.go:79] Failed to load initial config from "/home/user/studio/dataconnect": could not find dataconnect.yaml in `/home/user/studio/dataconnect`
+E0909 21:48:26.488513   87086 watch.go:102] watchAllDir unable to walk dir `/home/user/studio/dataconnect`: lstat /home/user/studio/dataconnect: no such file or directory
+ {"metadata":{"emulator":{"name":"dataconnect"},"message":"E0909 21:48:26.457956   87086 dev.go:79] Failed to load initial config from \"/home/user/studio/dataconnect\": could not find dataconnect.yaml in `/home/user/studio/dataconnect`\nE0909 21:48:26.488513   87086 watch.go:102] watchAllDir unable to walk dir `/home/user/studio/dataconnect`: lstat /home/user/studio/dataconnect: no such file or directory\n"}}
+[debug] [2025-09-09T21:48:26.540Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2025-09-09T21:48:26.549Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-09-09T21:48:26.780Z] [Firebase Plugin] User found:  rob.brasco@priorityautomotive.com
+[info] [Firebase Plugin] (Core:Project) New user detected, fetching projects
+[debug] [2025-09-09T21:48:26.807Z] Checked if tokens are valid: true, expires at: 1757458105549
+[debug] [2025-09-09T21:48:26.815Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects pageSize=1000
+[debug] [2025-09-09T21:48:27.095Z] I0909 21:48:26.663715   87086 dev.go:102] Listening on address (HTTP + gRPC): 127.0.0.1:50001
+ {"metadata":{"emulator":{"name":"dataconnect"},"message":"I0909 21:48:26.663715   87086 dev.go:102] Listening on address (HTTP + gRPC): 127.0.0.1:50001\n"}}
+[error] [Firebase Plugin] error:  {}
+[debug] [2025-09-09T21:48:27.389Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects 200
+[debug] [2025-09-09T21:48:27.391Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects [omitted]
+[debug] [2025-09-09T21:48:36.493Z] E0909 21:48:36.493058   87086 watch.go:31] Failed to load config from "/home/user/studio/dataconnect": could not find dataconnect.yaml in `/home/user/studio/dataconnect`
+ {"metadata":{"emulator":{"name":"dataconnect"},"message":"E0909 21:48:36.493058   87086 watch.go:31] Failed to load config from \"/home/user/studio/dataconnect\": could not find dataconnect.yaml in `/home/user/studio/dataconnect`\n"}}
+[debug] [2025-09-09T21:48:46.499Z] E0909 21:48:46.498978   87086 watch.go:31] Failed to load config from "/home/user/studio/dataconnect": could not find dataconnect.yaml in `/home/user/studio/dataconnect`
+ {"metadata":{"emulator":{"name":"dataconnect"},"message":"E0909 21:48:46.498978   87086 watch.go:31] Failed to load config from \"/home/user/studio/dataconnect\": could not find dataconnect.yaml in `/home/user/studio/dataconnect`\n"}}
+[debug] [2025-09-09T21:48:56.490Z] E0909 21:48:56.489746   87086 watch.go:31] Failed to load config from "/home/user/studio/dataconnect": could not find dataconnect.yaml in `/home/user/studio/dataconnect`
+ {"metadata":{"emulator":{"name":"dataconnect"},"message":"E0909 21:48:56.489746   87086 watch.go:31] Failed to load config from \"/home/user/studio/dataconnect\": could not find dataconnect.yaml in `/home/user/studio/dataconnect`\n"}}
+[debug] [2025-09-09T21:49:06.498Z] E0909 21:49:06.498328   87086 watch.go:31] Failed to load config from "/home/user/studio/dataconnect": could not find dataconnect.yaml in `/home/user/studio/dataconnect`
+ {"metadata":{"emulator":{"name":"dataconnect"},"message":"E0909 21:49:06.498328   87086 watch.go:31] Failed to load config from \"/home/user/studio/dataconnect\": could not find dataconnect.yaml in `/home/user/studio/dataconnect`\n"}}
+[debug] [2025-09-09T21:49:16.496Z] E0909 21:49:16.495858   87086 watch.go:31] Failed to load config from "/home/user/studio/dataconnect": could not find dataconnect.yaml in `/home/user/studio/dataconnect`
+ {"metadata":{"emulator":{"name":"dataconnect"},"message":"E0909 21:49:16.495858   87086 watch.go:31] Failed to load config from \"/home/user/studio/dataconnect\": could not find dataconnect.yaml in `/home/user/studio/dataconnect`\n"}}
