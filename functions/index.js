@@ -387,31 +387,39 @@ const LeadSchema = z.object({
 
 // ---- storage / firestore ----
 async function archiveToGcs(opts) {
-  if (!ARCHIVE_BUCKET) return;
+  if (!ARCHIVE_BUCKET) return; // archiving disabled unless you set ARCHIVE_BUCKET
   const bucket = storage.bucket(ARCHIVE_BUCKET);
-  const messageId = opts.messageId;
-  const rfc822 = opts.rfc822;
-  const adfXml = opts.adfXml;
-  const safeId = (messageId || (`no-msgid-${Date.now()}`)).replace(/[^\w.-]+/g, '_');
-  const date = new Date().toISOString().slice(0,10);
+  const messageId = opts.messageId || null;
+  const rfc822 = opts.rfc822 || '';
+  const adfXml = opts.adfXml || null;
+
+  const safeId = (messageId || `no-msgid-${Date.now()}`).replace(/[^\w.-]+/g, '_');
+  const date = new Date().toISOString().slice(0, 10);
   const rawPath = `raw/${date}/${safeId}.eml`;
   const adfPath = `adf/${date}/${safeId}.xml`;
-  await bucket.file(rawPath).save(Buffer.from(rfc822, 'utf8'), { contentType: 'message/rfc822' });
+
+  await bucket.file(rawPath).save(Buffer.from(rfc822, 'utf8'), {
+    contentType: 'message/rfc822',
+  });
   if (adfXml) {
-    await bucket.file(adfPath).save(Buffer.from(adfXml, 'utf8'), { contentType: 'application/xml' });
+    await bucket.file(adfPath).save(Buffer.from(adfXml, 'utf8'), {
+      contentType: 'application/xml',
+    });
   }
 }
 
 async function markProcessedIfNew(messageId, adfId) {
   const key = (messageId || 'no-msgid') + '__' + (adfId || 'no-adfid');
-  const ref = db.collection(DEDUP E_COLL = DEDUPE_COLL).doc(key);
+  const ref = db.collection(DEDUPE_COLL).doc(key); // <-- fixed
   const existing = await ref.get();
   if (existing.exists) return { isDuplicate: true, docId: key };
+
   await ref.set({
     messageId: messageId || null,
     adfId: adfId || null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp()
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+
   return { isDuplicate: false, docId: key };
 }
 
