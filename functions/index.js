@@ -2,8 +2,8 @@
 // Parses ADF/XML from attachments, decoded HTML, text, or raw RFC822.
 // Validates with Zod, dedupes, archives (optional), and writes to Firestore.
 
-const { onRequest } = require('firebase-functions/v2/https');
-const logger = require('firebase-functions/logger');
+const { onRequest } = require('firebase-functions/v2/https'); // v2 import
+const logger = require('firebase-functions/logger');           // v2 structured logger
 const admin = require('firebase-admin');
 const { simpleParser } = require('mailparser');
 const { XMLParser } = require('fast-xml-parser');
@@ -15,10 +15,10 @@ const db = admin.firestore();
 const storage = admin.storage();
 
 // ---- Config ----
-const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2MB
-const DEDUPE_COLL   = process.env.DEDUPE_COLL    || 'email_ingest';
-const LEADS_COLL    = process.env.LEADS_COLL     || 'email_leads';
-const ARCHIVE_BUCKET= process.env.ARCHIVE_BUCKET || ''; // optional
+const MAX_BODY_BYTES   = 2 * 1024 * 1024;                // 2MB
+const DEDUPE_COLL      = process.env.DEDUPE_COLL    || 'email_ingest';
+const LEADS_COLL       = process.env.LEADS_COLL     || 'email_leads';
+const ARCHIVE_BUCKET   = process.env.ARCHIVE_BUCKET || ''; // optional GCS bucket name
 
 // ---- Helpers ----
 function base64UrlToUtf8(maybeB64Url) {
@@ -41,6 +41,7 @@ function extractAdfXml(str) {
 
 function sanitizeXml(xmlString) {
   if (!xmlString) return xmlString;
+  // encode stray &'s that aren't entities
   return xmlString.replace(/&(?!(amp;|lt;|gt;|quot;|apos;))/g, '&amp;');
 }
 
@@ -54,7 +55,7 @@ function decodeHtmlEntities(s) {
     .replace(/&apos;/gi, "'");
 }
 
-function digitsOnly(x) { return (x || '').replace(/\D+/g, ''); }
+function digitsOnly(x){ return (x || '').replace(/\D+/g, ''); }
 function normalizePhoneDigits(x) {
   const d = digitsOnly(x);
   if (d.length === 11 && d.startsWith('1')) return d.slice(1);
@@ -63,7 +64,7 @@ function normalizePhoneDigits(x) {
 }
 function phonePretty(d) {
   if (!d || d.length !== 10) return null;
-  return '(' + d.slice(0,3) + ') ' + d.slice(3,6) + '-' + d.slice(6);
+  return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
 }
 function normalizeZip(x) {
   const m = (x || '').match(/\b\d{5}(-\d{4})?\b/);
@@ -78,11 +79,11 @@ function toNum(x) {
 function parseKeyValsFromCdata(text) {
   const out = {};
   const s = (text || '').replace(/\r/g, '');
-  const lines = s.split('\n').flatMap(function(line) {
+  const lines = s.split('\n').flatMap(line => {
     const parts = [];
-    var cursor = 0;
-    var regex = /, (?=[A-Z][a-zA-Z ]+:)/g;
-    var m;
+    let cursor = 0;
+    const regex = /, (?=[A-Z][a-zA-Z ]+:)/g;
+    let m;
     while ((m = regex.exec(line))) {
       parts.push(line.slice(cursor, m.index));
       cursor = m.index + 2;
@@ -90,49 +91,46 @@ function parseKeyValsFromCdata(text) {
     parts.push(line.slice(cursor));
     return parts;
   });
-  for (var i = 0; i < lines.length; i++) {
-    var L = lines[i];
-    var m = L.match(/\s*([^:]+):\s*(.+)$/);
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i];
+    const m = L.match(/\s*([^:]+):\s*(.+)$/);
     if (m) out[m[1].trim()] = m[2].trim();
   }
   return out;
 }
-
 function parsePreferredContactFromCdata(text) {
-  var m = (text || '').match(/Preferred Contact Method:\s*([a-z]+)\b/i);
+  const m = (text || '').match(/Preferred Contact Method:\s*([a-z]+)\b/i);
   return m ? m[1].toLowerCase() : null;
 }
-
 function parseOptionalQuestionsFromCdata(text) {
-  var arr = [];
-  var s = (text || '').replace(/\r/g, '');
-  var re = /Question:\s*(.+?)\s+Check:\s*([^\n,]+)(?:,\s*Response:\s*([^\n]+))?/gi;
-  var m;
+  const arr = [];
+  const s = (text || '').replace(/\r/g, '');
+  const re = /Question:\s*(.+?)\s+Check:\s*([^\n,]+)(?:,\s*Response:\s*([^\n]+))?/gi;
+  let m;
   while ((m = re.exec(s))) {
     arr.push({ question: m[1].trim(), check: (m[2] || '').trim(), response: (m[3] || '').trim() || null });
   }
   return arr;
 }
-
 function parseCampaignBitsFromCdata(text) {
-  var kv = parseKeyValsFromCdata(text);
-  function pick(name) {
-    var key = Object.keys(kv).find(function(k){ return k.toLowerCase() === name.toLowerCase(); });
+  const kv = parseKeyValsFromCdata(text);
+  const pick = (name) => {
+    const key = Object.keys(kv).find(k => k.toLowerCase() === name.toLowerCase());
     return key ? kv[key] : null;
-  }
-  var clickPathUrl = pick('Click Path');
-  var utm = {};
+  };
+  const clickPathUrl = pick('Click Path');
+  const utm = {};
   try {
-    var url = new URL(clickPathUrl);
-    var p = url.searchParams;
+    const url = new URL(clickPathUrl);
+    const p = url.searchParams;
     utm.source   = p.get('utm_source')   || null;
     utm.medium   = p.get('utm_medium')   || null;
     utm.campaign = p.get('utm_campaign') || null;
     utm.term     = p.get('utm_term')     || null;
     utm.content  = p.get('utm_content')  || null;
-  } catch (_e) {}
+  } catch (_) {}
   return {
-    clickPathUrl: clickPathUrl,
+    clickPathUrl,
     primaryCampaignSource: pick('Primary PPC Campaign Source'),
     adwordsClickId: pick('Adwords Click Id') || pick('AdWords Click Id') || pick('GCLID') || null,
     networkType: pick('Network Type'),
@@ -144,88 +142,88 @@ function parseCampaignBitsFromCdata(text) {
     condition: pick('Condition'),
     price: pick('Price'),
     _rawPairs: kv,
-    utm: utm
+    utm
   };
 }
 
 async function getAdfXml(parsed, rfc822) {
   // 1) attachments
   if (Array.isArray(parsed.attachments)) {
-    for (var i = 0; i < parsed.attachments.length; i++) {
-      var a = parsed.attachments[i];
+    for (let i = 0; i < parsed.attachments.length; i++) {
+      const a = parsed.attachments[i];
       try {
-        var ct = (a.contentType || '').toLowerCase();
-        var name = (a.filename || '').toLowerCase();
-        if (ct.indexOf('xml') >= 0 || name.endsWith('.xml')) {
-          var xml = a.content.toString('utf8');
-          var hit = extractAdfXml(xml);
-          if (hit) { logger.info('ADF found in attachment: ' + (a.filename || ct)); return hit; }
+        const ct = (a.contentType || '').toLowerCase();
+        const name = (a.filename || '').toLowerCase();
+        if (ct.includes('xml') || name.endsWith('.xml')) {
+          const xml = a.content.toString('utf8');
+          const hit = extractAdfXml(xml);
+          if (hit) { logger.info('ADF found in attachment', { file: a.filename || ct }); return hit; }
         }
         if (a.content && a.content.length) {
-          var maybe = a.content.toString('utf8');
-          var hit2 = extractAdfXml(maybe);
-          if (hit2) { logger.info('ADF found in attachment (generic): ' + (a.filename || ct)); return hit2; }
+          const maybe = a.content.toString('utf8');
+          const hit2 = extractAdfXml(maybe);
+          if (hit2) { logger.info('ADF found in attachment (generic)', { file: a.filename || ct }); return hit2; }
         }
-      } catch (e) { logger.warn('Attachment scan error: ' + String((e && e.message) || e)); }
+      } catch (e) { logger.warn('Attachment scan error', { error: String(e && e.message || e) }); }
     }
   }
   // 2) html-decoded
   if (parsed.html) {
-    var decoded = decodeHtmlEntities(parsed.html.toString());
-    var hit = extractAdfXml(decoded);
+    const decoded = decodeHtmlEntities(parsed.html.toString());
+    const hit = extractAdfXml(decoded);
     if (hit) { logger.info('ADF found in decoded HTML'); return hit; }
   }
   // 3) text
   if (parsed.text) {
-    var hit3 = extractAdfXml(parsed.text.toString());
+    const hit3 = extractAdfXml(parsed.text.toString());
     if (hit3) { logger.info('ADF found in text body'); return hit3; }
   }
   // 4) raw fallback
-  var hit4 = extractAdfXml(rfc822);
+  const hit4 = extractAdfXml(rfc822);
   if (hit4) { logger.info('ADF found in raw RFC822'); return hit4; }
   return null;
 }
 
 // ---- ADF normalization ----
 function normalizeAdf(adfObj) {
-  var adf = adfObj && adfObj.adf ? adfObj.adf : {};
-  var p = adf.prospect || {};
-  var adfId = (p.id && (p.id['#text'] || p.id)) || null;
+  const adf = adfObj && adfObj.adf ? adfObj.adf : {};
+  const p = adf.prospect || {};
+  const adfId = (p.id && (p.id['#text'] || p.id)) || null;
 
-  var contact = p.customer && p.customer.contact ? p.customer.contact : {};
-  function toArray(v){ return Array.isArray(v) ? v : (v ? [v] : []); }
-  var names = toArray(contact.name);
-  function findName(part) {
-    for (var i=0;i<names.length;i++) {
-      var n = names[i];
+  const contact = p.customer && p.customer.contact ? p.customer.contact : {};
+  const toArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+  const names = toArray(contact.name);
+  const findName = (part) => {
+    for (let i = 0; i < names.length; i++) {
+      const n = names[i];
       if (n && n.part === part) return (n['#text'] || n) || null;
     }
     return null;
-  }
-  var firstName = findName('first');
-  var lastName  = findName('last');
-  var email = contact.email || null;
+  };
+  const firstName = findName('first');
+  const lastName  = findName('last');
+  const email = contact.email || null;
 
-  var phoneRaw = null;
+  let phoneRaw = null;
   if (Array.isArray(contact.phone)) {
     phoneRaw = (contact.phone[0] && (contact.phone[0]['#text'] || contact.phone[0])) || null;
   } else if (contact.phone) {
     phoneRaw = contact.phone['#text'] || contact.phone || null;
   }
-  var phoneDigits = normalizePhoneDigits(phoneRaw);
-  var phonePrettyVal = phonePretty(phoneDigits);
-  var zip = normalizeZip(p.customer && p.customer.contact && p.customer.contact.address ? p.customer.contact.address.postalcode : null);
+  const phoneDigits = normalizePhoneDigits(phoneRaw);
+  const phonePrettyVal = phonePretty(phoneDigits);
+  const zip = normalizeZip(p.customer && p.customer.contact && p.customer.contact.address ? p.customer.contact.address.postalcode : null);
 
-  var vehicles = toArray(p.vehicle);
-  var trade = vehicles.find(function(v){ return v && v.interest === 'trade-in'; }) || null;
-  var buy   = vehicles.find(function(v){ return v && v.interest === 'buy'; }) || null;
+  const vehicles = toArray(p.vehicle);
+  const trade = vehicles.find(v => v && v.interest === 'trade-in') || null;
+  const buy   = vehicles.find(v => v && v.interest === 'buy') || null;
 
-  var cdataText = (p.customer && p.customer.comments) || null;
-  var preferred = parsePreferredContactFromCdata(cdataText);
-  var optionalQuestions = parseOptionalQuestionsFromCdata(cdataText);
-  var campaign = parseCampaignBitsFromCdata(cdataText);
+  const cdataText = (p.customer && p.customer.comments) || null;
+  const preferred = parsePreferredContactFromCdata(cdataText);
+  const optionalQuestions = parseOptionalQuestionsFromCdata(cdataText);
+  const campaign = parseCampaignBitsFromCdata(cdataText);
 
-  var tradeIn = trade ? {
+  const tradeIn = trade ? {
     status: trade.status || null,
     year: toNum(trade.year),
     make: trade.make || null,
@@ -235,7 +233,7 @@ function normalizeAdf(adfObj) {
     comments: trade.comments || null
   } : null;
 
-  var interest = buy ? {
+  const interest = buy ? {
     status: buy.status || null,
     year: toNum(buy.year),
     make: buy.make || null,
@@ -249,14 +247,14 @@ function normalizeAdf(adfObj) {
     odometer: toNum(buy.odometer)
   } : null;
 
-  var validation = {
+  const validation = {
     hasEmailOrPhone: Boolean(email || phoneDigits),
     emailLooksValid: email ? /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) : null,
     phoneDigits10: phoneDigits ? phoneDigits.length === 10 : null,
     zipLooksValid: zip ? /^\d{5}(-\d{4})?$/.test(zip) : null
   };
 
-  var customerName = [firstName, lastName].filter(function(x){ return !!x; }).join(' ') || 'Unknown Lead';
+  const customerName = [firstName, lastName].filter(Boolean).join(' ') || 'Unknown Lead';
 
   return {
     status: 'new',
@@ -264,27 +262,27 @@ function normalizeAdf(adfObj) {
     comments: cdataText,
     timestamp: p.requestdate ? new Date(p.requestdate).getTime() : Date.now(),
     receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-    customerName: customerName,
-    vehicleName: [interest && interest.year, interest && interest.make, interest && interest.model].filter(function(x){return !!x;}).join(' '),
+    customerName,
+    vehicleName: [interest && interest.year, interest && interest.make, interest && interest.model].filter(Boolean).join(' '),
 
     meta: {
-      adfId: adfId,
+      adfId,
       requestDate: p.requestdate || null,
       vendorName: p.vendor && p.vendor.vendorname || null,
       providerName: p.provider && (p.provider.name && (p.provider.name['#text'] || p.provider.name)) || null,
       providerUrl: p.provider && p.provider.url || null
     },
     customer: {
-      firstName: firstName,
-      lastName: lastName,
-      email: email,
-      phoneDigits: phoneDigits,
+      firstName,
+      lastName,
+      email,
+      phoneDigits,
       phonePretty: phonePrettyVal,
-      zip: zip,
-      preferredContactMethod: preferred
+      zip,
+      preferredContactMethod: preferred // 'email' | 'phone' | 'text' | null
     },
-    tradeIn: tradeIn,
-    interest: interest,
+    tradeIn,
+    interest,
     marketing: {
       clickPathUrl: campaign.clickPathUrl,
       primaryCampaignSource: campaign.primaryCampaignSource,
@@ -299,8 +297,8 @@ function normalizeAdf(adfObj) {
       condition: campaign.condition || null,
       _allParsedPairs: campaign._rawPairs
     },
-    optionalQuestions: optionalQuestions,
-    validation: validation
+    optionalQuestions,
+    validation
   };
 }
 
@@ -386,8 +384,8 @@ async function archiveToGcs(opts) {
   const adfXml = opts.adfXml;
   const safeId = (messageId || ('no-msgid-' + Date.now())).replace(/[^\w.-]+/g, '_');
   const date = new Date().toISOString().slice(0,10);
-  const rawPath = 'raw/' + date + '/' + safeId + '.eml';
-  const adfPath = 'adf/' + date + '/' + safeId + '.xml';
+  const rawPath = `raw/${date}/${safeId}.eml`;
+  const adfPath = `adf/${date}/${safeId}.xml`;
   await bucket.file(rawPath).save(Buffer.from(rfc822, 'utf8'), { contentType: 'message/rfc822' });
   if (adfXml) {
     await bucket.file(adfPath).save(Buffer.from(adfXml, 'utf8'), { contentType: 'application/xml' });
@@ -396,7 +394,7 @@ async function archiveToGcs(opts) {
 
 async function markProcessedIfNew(messageId, adfId) {
   const key = (messageId || 'no-msgid') + '__' + (adfId || 'no-adfid');
-  const ref = db.collection(DEDUPE_COLL).doc(key);
+  const ref = db.collection(DEDUPLE_COLL || DEDUPE_COLL).doc(key); // (support old var if present)
   const existing = await ref.get();
   if (existing.exists) return { isDuplicate: true, docId: key };
   await ref.set({
@@ -416,21 +414,25 @@ async function saveLeadDoc(docId, payload) {
 exports.receiveEmailLeadV2 = onRequest(
   {
     region: 'us-central1',
-    secrets: ['GMAIL_WEBHOOK_SECRET'],
-    // minInstances: 0 by default (no $ floor)
+    secrets: ['GMAIL_WEBHOOK_SECRET'], // set via: firebase functions:secrets:set GMAIL_WEBHOOK_SECRET
+    // No minInstances to avoid $ floor
     memory: '256MiB',
-    timeoutSeconds: 120,
+    timeoutSeconds: 120
   },
   async (req, res) => {
-    logger.info('receiveEmailLead: started cl=' + (req.get('content-length') || 'n/a') +
-      ' ct=' + (req.get('content-type') || 'n/a') +
-      ' xmid=' + (req.get('X-Gmail-Message-Id') || 'n/a'));
+    // Breadcrumbs
+    logger.info('receiveEmailLead: started', {
+      cl: req.get('content-length') || null,
+      ct: req.get('content-type') || null,
+      xmid: req.get('X-Gmail-Message-Id') || null
+    });
 
     try {
+      // Auth
       const providedSecret = req.get('X-Webhook-Secret');
       const expectedSecret = process.env.GMAIL_WEBHOOK_SECRET;
       if (providedSecret !== expectedSecret) {
-        logger.warn('Unauthorized webhook attempt');
+        logger.warn('unauthorized_webhook_attempt');
         return res.status(401).json({ ok: false, error: 'unauthorized' });
       }
 
@@ -439,6 +441,7 @@ exports.receiveEmailLeadV2 = onRequest(
         return res.status(413).json({ ok: false, error: 'payload_too_large', bytes: contentLength });
       }
 
+      // Body
       const rawBodyStr =
         (typeof req.body === 'string') ? req.body :
         (Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : '');
@@ -447,71 +450,68 @@ exports.receiveEmailLeadV2 = onRequest(
         return res.status(400).json({ ok: false, error: 'missing_body' });
       }
 
-      logger.info('receiveEmailLead: body ready len=' + rawBodyStr.length);
+      logger.info('receiveEmailLead: body ready', { len: rawBodyStr.length });
 
-      // Base64url decode (Apps Script sends RAW base64url RFC822)
+      // Decode (Apps Script sends base64url RAW RFC822)
       const rfc822 = base64UrlToUtf8(rawBodyStr);
 
-      // Mail parsing with guard
+      // Parse mail
       let parsed;
       try {
         parsed = await simpleParser(rfc822);
       } catch (e) {
-        logger.error('mailparser_failed: ' + String((e && e.message) || e));
-        return res.status(400).json({ ok:false, error:'mailparser_failed', details: String((e && e.message) || e) });
+        const msg = String(e && e.message || e);
+        logger.error('mailparser_failed: ' + msg);
+        return res.status(400).json({ ok:false, error:'mailparser_failed', details: msg });
       }
 
       const messageId = parsed.messageId || req.get('X-Gmail-Message-Id') || null;
 
-      // Extract ADF everywhere we can
+      // Extract ADF
       let adfXml = await getAdfXml(parsed, rfc822);
       if (!adfXml) {
-        logger.warn('adf_not_found (graceful) subject=' + (parsed.subject || 'n/a') +
-          ' from=' + ((parsed.from && parsed.from.text) || 'n/a'));
-        try { await archiveToGcs({ messageId, rfc822 }); } catch (ae) {
-          logger.error('archive_raw_failed_on_non_lead: ' + String((ae && ae.message) || ae));
-        }
+        logger.warn('adf_not_found (graceful_exit)', {
+          messageId,
+          subject: parsed.subject || null,
+          from: (parsed.from && parsed.from.text) || null,
+        });
+        try { await archiveToGcs({ messageId, rfc822 }); } catch (ae) { logger.error('archive_raw_failed_on_non_lead: ' + String(ae && ae.message || ae)); }
         return res.status(200).json({ ok:true, outcome:'not_a_lead_email' });
       }
 
       adfXml = sanitizeXml(adfXml);
 
-      // XML parsing with guard
+      // ADF → JS
       let adfObj;
       try {
         const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '', allowBooleanAttributes: true });
         adfObj = parser.parse(adfXml);
       } catch (e) {
-        logger.error('xml_parse_failed: ' + String((e && e.message) || e));
-        try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) {
-          logger.error('archive_xml_failed: ' + String((ae && ae.message) || ae));
-        }
-        return res.status(400).json({ ok:false, error:'xml_parse_failed', details: String((e && e.message) || e) });
+        const msg = String(e && e.message || e);
+        logger.error('xml_parse_failed: ' + msg);
+        try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) { logger.error('archive_xml_failed: ' + String(ae && ae.message || ae)); }
+        return res.status(400).json({ ok:false, error:'xml_parse_failed', details: msg });
       }
 
       // Normalize + validate
       const leadData = normalizeAdf(adfObj);
       const zres = LeadSchema.safeParse(leadData);
       if (!zres.success) {
-        try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) {
-          logger.error('archive_on_schema_fail: ' + String((ae && ae.message) || ae));
-        }
+        try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) { logger.error('archive_on_schema_fail: ' + String(ae && ae.message || ae)); }
         await db.collection('email_leads_invalid').add({
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          messageId: messageId,
+          messageId,
           subject: parsed.subject || null,
           errors: zres.error.flatten()
         });
         return res.status(422).json({ ok:false, error:'schema_validation_failed', details: zres.error.flatten() });
       }
 
-      // De-dupe and archive
+      // De-dupe + archive
       const mk = await markProcessedIfNew(messageId, leadData.meta.adfId);
-      try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) {
-        logger.error('archive_ok_failed: ' + String((ae && ae.message) || ae));
-      }
+      try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) { logger.error('archive_ok_failed: ' + String(ae && ae.message || ae)); }
 
-      // Persist (only once)
+      // Persist (first time only)
       if (!mk.isDuplicate) {
         const savePayload = {
           ...leadData,
@@ -526,15 +526,16 @@ exports.receiveEmailLeadV2 = onRequest(
         await saveLeadDoc(mk.docId, savePayload);
       }
 
-      logger.info('Saved lead adfId=' + (leadData.meta.adfId || 'n/a') +
-        ' messageId=' + (messageId || 'n/a') +
-        ' duplicate=' + mk.isDuplicate);
+      logger.info('lead_saved', { adfId: leadData.meta.adfId, messageId, duplicate: mk.isDuplicate });
       return res.status(200).json({ ok: true, duplicate: mk.isDuplicate, dedupeKey: mk.docId, messageId });
 
     } catch (err) {
+      // ***** FIXED CATCH BLOCK (stringifies params for logger) *****
       const msg = (err && err.message) ? String(err.message) : String(err);
       const stack = (err && err.stack) ? String(err.stack) : '';
       logger.error('receiveEmailLead_uncaught: ' + msg + ' stack=' + stack);
+
+      // Best-effort archive of raw body
       try {
         const rawStr =
           (typeof req.body === 'string') ? req.body :
@@ -544,6 +545,7 @@ exports.receiveEmailLeadV2 = onRequest(
       } catch (archiveErr) {
         logger.error('archive_on_uncaught_failed: ' + String((archiveErr && archiveErr.message) || archiveErr));
       }
+
       return res.status(500).json({ ok: false, error: 'internal_error' });
     }
   }
