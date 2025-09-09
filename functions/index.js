@@ -2,8 +2,8 @@
 // Parses ADF/XML from attachments, decoded HTML, text, or raw RFC822.
 // Validates with Zod, dedupes, archives (optional), and writes to Firestore.
 
-const { onRequest } = require('firebase-functions/v2/https'); // v2 import
-const logger = require('firebase-functions/logger');           // v2 structured logger
+const { onRequest } = require('firebase-functions/v2/https');
+const logger = require('firebase-functions/logger');
 const admin = require('firebase-admin');
 const { simpleParser } = require('mailparser');
 const { XMLParser } = require('fast-xml-parser');
@@ -15,19 +15,20 @@ const db = admin.firestore();
 const storage = admin.storage();
 
 // ---- Config ----
-const MAX_BODY_BYTES   = 2 * 1024 * 1024;                // 2MB
-const DEDUPE_COLL      = process.env.DEDUPE_COLL    || 'email_ingest';
-const LEADS_COLL       = process.env.LEADS_COLL     || 'email_leads';
-const ARCHIVE_BUCKET   = process.env.ARCHIVE_BUCKET || ''; // optional GCS bucket name
+const MAX_BODY_BYTES  = 2 * 1024 * 1024; // 2MB
+const DEDUPE_COLL     = process.env.DEDUPE_COLL     || 'email_ingest';
+const LEADS_COLL      = process.env.LEADS_COLL      || 'email_leads';
+const ARCHIVE_BUCKET  = process.env.ARCHIVE_BUCKET  || ''; // optional (leave blank to disable)
 
 // ---- Helpers ----
 function base64UrlToUtf8(maybeB64Url) {
   const s = (maybeB64Url || '').trim();
+  // Already a decoded message or xml?
   if (
     s.startsWith('Delivered-To:') || s.startsWith('Return-Path:') ||
     s.startsWith('From:') || s.startsWith('To:') || s.startsWith('Subject:') ||
     s.startsWith('<?xml')
-  ) return s; // already decoded raw/rfc822 or xml
+  ) return s;
   const pad = '='.repeat((4 - (s.length % 4)) % 4);
   const b64 = (s + pad).replace(/-/g, '+').replace(/_/g, '/');
   return Buffer.from(b64, 'base64').toString('utf8');
@@ -41,7 +42,7 @@ function extractAdfXml(str) {
 
 function sanitizeXml(xmlString) {
   if (!xmlString) return xmlString;
-  // encode stray &'s that aren't entities
+  // Encode stray ampersands that are not part of known entities
   return xmlString.replace(/&(?!(amp;|lt;|gt;|quot;|apos;))/g, '&amp;');
 }
 
@@ -55,7 +56,7 @@ function decodeHtmlEntities(s) {
     .replace(/&apos;/gi, "'");
 }
 
-function digitsOnly(x){ return (x || '').replace(/\D+/g, ''); }
+function digitsOnly(x) { return (x || '').replace(/\D+/g, ''); }
 function normalizePhoneDigits(x) {
   const d = digitsOnly(x);
   if (d.length === 11 && d.startsWith('1')) return d.slice(1);
@@ -79,7 +80,7 @@ function toNum(x) {
 function parseKeyValsFromCdata(text) {
   const out = {};
   const s = (text || '').replace(/\r/g, '');
-  const lines = s.split('\n').flatMap(line => {
+  const lines = s.split('\n').flatMap((line) => {
     const parts = [];
     let cursor = 0;
     const regex = /, (?=[A-Z][a-zA-Z ]+:)/g;
@@ -98,26 +99,33 @@ function parseKeyValsFromCdata(text) {
   }
   return out;
 }
+
 function parsePreferredContactFromCdata(text) {
   const m = (text || '').match(/Preferred Contact Method:\s*([a-z]+)\b/i);
   return m ? m[1].toLowerCase() : null;
 }
+
 function parseOptionalQuestionsFromCdata(text) {
   const arr = [];
   const s = (text || '').replace(/\r/g, '');
   const re = /Question:\s*(.+?)\s+Check:\s*([^\n,]+)(?:,\s*Response:\s*([^\n]+))?/gi;
   let m;
   while ((m = re.exec(s))) {
-    arr.push({ question: m[1].trim(), check: (m[2] || '').trim(), response: (m[3] || '').trim() || null });
+    arr.push({
+      question: m[1].trim(),
+      check: (m[2] || '').trim(),
+      response: ((m[3] || '').trim() || null),
+    });
   }
   return arr;
 }
+
 function parseCampaignBitsFromCdata(text) {
   const kv = parseKeyValsFromCdata(text);
-  const pick = (name) => {
-    const key = Object.keys(kv).find(k => k.toLowerCase() === name.toLowerCase());
+  function pick(name) {
+    const key = Object.keys(kv).find((k) => k.toLowerCase() === name.toLowerCase());
     return key ? kv[key] : null;
-  };
+  }
   const clickPathUrl = pick('Click Path');
   const utm = {};
   try {
@@ -128,7 +136,7 @@ function parseCampaignBitsFromCdata(text) {
     utm.campaign = p.get('utm_campaign') || null;
     utm.term     = p.get('utm_term')     || null;
     utm.content  = p.get('utm_content')  || null;
-  } catch (_) {}
+  } catch (_e) {}
   return {
     clickPathUrl,
     primaryCampaignSource: pick('Primary PPC Campaign Source'),
@@ -142,7 +150,7 @@ function parseCampaignBitsFromCdata(text) {
     condition: pick('Condition'),
     price: pick('Price'),
     _rawPairs: kv,
-    utm
+    utm,
   };
 }
 
@@ -157,14 +165,16 @@ async function getAdfXml(parsed, rfc822) {
         if (ct.includes('xml') || name.endsWith('.xml')) {
           const xml = a.content.toString('utf8');
           const hit = extractAdfXml(xml);
-          if (hit) { logger.info('ADF found in attachment', { file: a.filename || ct }); return hit; }
+          if (hit) { logger.info(`ADF found in attachment: ${a.filename || ct}`); return hit; }
         }
         if (a.content && a.content.length) {
           const maybe = a.content.toString('utf8');
           const hit2 = extractAdfXml(maybe);
-          if (hit2) { logger.info('ADF found in attachment (generic)', { file: a.filename || ct }); return hit2; }
+          if (hit2) { logger.info(`ADF found in attachment (generic): ${a.filename || ct}`); return hit2; }
         }
-      } catch (e) { logger.warn('Attachment scan error', { error: String(e && e.message || e) }); }
+      } catch (e) {
+        logger.warn(`Attachment scan error: ${String((e && e.message) || e)}`);
+      }
     }
   }
   // 2) html-decoded
@@ -191,15 +201,15 @@ function normalizeAdf(adfObj) {
   const adfId = (p.id && (p.id['#text'] || p.id)) || null;
 
   const contact = p.customer && p.customer.contact ? p.customer.contact : {};
-  const toArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+  function toArray(v){ return Array.isArray(v) ? v : (v ? [v] : []); }
   const names = toArray(contact.name);
-  const findName = (part) => {
-    for (let i = 0; i < names.length; i++) {
+  function findName(part) {
+    for (let i=0;i<names.length;i++) {
       const n = names[i];
       if (n && n.part === part) return (n['#text'] || n) || null;
     }
     return null;
-  };
+  }
   const firstName = findName('first');
   const lastName  = findName('last');
   const email = contact.email || null;
@@ -210,18 +220,18 @@ function normalizeAdf(adfObj) {
   } else if (contact.phone) {
     phoneRaw = contact.phone['#text'] || contact.phone || null;
   }
-  const phoneDigits = normalizePhoneDigits(phoneRaw);
-  const phonePrettyVal = phonePretty(phoneDigits);
+  const phoneDigits     = normalizePhoneDigits(phoneRaw);
+  const phonePrettyVal  = phonePretty(phoneDigits);
   const zip = normalizeZip(p.customer && p.customer.contact && p.customer.contact.address ? p.customer.contact.address.postalcode : null);
 
   const vehicles = toArray(p.vehicle);
-  const trade = vehicles.find(v => v && v.interest === 'trade-in') || null;
-  const buy   = vehicles.find(v => v && v.interest === 'buy') || null;
+  const trade = vehicles.find((v) => v && v.interest === 'trade-in') || null;
+  const buy   = vehicles.find((v) => v && v.interest === 'buy') || null;
 
-  const cdataText = (p.customer && p.customer.comments) || null;
-  const preferred = parsePreferredContactFromCdata(cdataText);
+  const cdataText         = (p.customer && p.customer.comments) || null;
+  const preferred         = parsePreferredContactFromCdata(cdataText);
   const optionalQuestions = parseOptionalQuestionsFromCdata(cdataText);
-  const campaign = parseCampaignBitsFromCdata(cdataText);
+  const campaign          = parseCampaignBitsFromCdata(cdataText);
 
   const tradeIn = trade ? {
     status: trade.status || null,
@@ -382,7 +392,7 @@ async function archiveToGcs(opts) {
   const messageId = opts.messageId;
   const rfc822 = opts.rfc822;
   const adfXml = opts.adfXml;
-  const safeId = (messageId || ('no-msgid-' + Date.now())).replace(/[^\w.-]+/g, '_');
+  const safeId = (messageId || (`no-msgid-${Date.now()}`)).replace(/[^\w.-]+/g, '_');
   const date = new Date().toISOString().slice(0,10);
   const rawPath = `raw/${date}/${safeId}.eml`;
   const adfPath = `adf/${date}/${safeId}.xml`;
@@ -394,7 +404,7 @@ async function archiveToGcs(opts) {
 
 async function markProcessedIfNew(messageId, adfId) {
   const key = (messageId || 'no-msgid') + '__' + (adfId || 'no-adfid');
-  const ref = db.collection(DEDUPLE_COLL || DEDUPE_COLL).doc(key); // (support old var if present)
+  const ref = db.collection(DEDUP E_COLL = DEDUPE_COLL).doc(key);
   const existing = await ref.get();
   if (existing.exists) return { isDuplicate: true, docId: key };
   await ref.set({
@@ -411,31 +421,33 @@ async function saveLeadDoc(docId, payload) {
 }
 
 // ---- Function (Firebase v2) ----
+// IMPORTANT: This name must match your Apps Script URL path: /receiveEmailLeadV2
 exports.receiveEmailLeadV2 = onRequest(
   {
     region: 'us-central1',
-    secrets: ['GMAIL_WEBHOOK_SECRET'], // set via: firebase functions:secrets:set GMAIL_WEBHOOK_SECRET
-    // No minInstances to avoid $ floor
+    secrets: ['GMAIL_WEBHOOK_SECRET'],
+    // Do NOT set minInstances unless you accept the ~$4.50/mo floor.
     memory: '256MiB',
-    timeoutSeconds: 120
+    timeoutSeconds: 120,
   },
   async (req, res) => {
-    // Breadcrumbs
+    // Early breadcrumbs
     logger.info('receiveEmailLead: started', {
       cl: req.get('content-length') || null,
       ct: req.get('content-type') || null,
-      xmid: req.get('X-Gmail-Message-Id') || null
+      xmid: req.get('X-Gmail-Message-Id') || null,
     });
 
     try {
-      // Auth
+      // Auth check
       const providedSecret = req.get('X-Webhook-Secret');
       const expectedSecret = process.env.GMAIL_WEBHOOK_SECRET;
       if (providedSecret !== expectedSecret) {
-        logger.warn('unauthorized_webhook_attempt');
+        logger.warn('Unauthorized webhook attempt');
         return res.status(401).json({ ok: false, error: 'unauthorized' });
       }
 
+      // Size check
       const contentLength = Number(req.get('content-length') || '0');
       if (contentLength > MAX_BODY_BYTES) {
         return res.status(413).json({ ok: false, error: 'payload_too_large', bytes: contentLength });
@@ -452,7 +464,7 @@ exports.receiveEmailLeadV2 = onRequest(
 
       logger.info('receiveEmailLead: body ready', { len: rawBodyStr.length });
 
-      // Decode (Apps Script sends base64url RAW RFC822)
+      // Decode base64url RFC822
       const rfc822 = base64UrlToUtf8(rawBodyStr);
 
       // Parse mail
@@ -460,9 +472,8 @@ exports.receiveEmailLeadV2 = onRequest(
       try {
         parsed = await simpleParser(rfc822);
       } catch (e) {
-        const msg = String(e && e.message || e);
-        logger.error('mailparser_failed: ' + msg);
-        return res.status(400).json({ ok:false, error:'mailparser_failed', details: msg });
+        logger.error(`mailparser_failed: ${String((e && e.message) || e)}`);
+        return res.status(400).json({ ok:false, error:'mailparser_failed', details: String((e && e.message) || e) });
       }
 
       const messageId = parsed.messageId || req.get('X-Gmail-Message-Id') || null;
@@ -470,48 +481,58 @@ exports.receiveEmailLeadV2 = onRequest(
       // Extract ADF
       let adfXml = await getAdfXml(parsed, rfc822);
       if (!adfXml) {
-        logger.warn('adf_not_found (graceful_exit)', {
-          messageId,
+        logger.warn('adf_not_found graceful_exit', {
+          messageId: messageId || null,
           subject: parsed.subject || null,
           from: (parsed.from && parsed.from.text) || null,
         });
-        try { await archiveToGcs({ messageId, rfc822 }); } catch (ae) { logger.error('archive_raw_failed_on_non_lead: ' + String(ae && ae.message || ae)); }
+        // archive raw for future forensics (optional)
+        try { await archiveToGcs({ messageId, rfc822 }); } catch (ae) {
+          logger.error(`archive_raw_failed_on_non_lead: ${String((ae && ae.message) || ae)}`);
+        }
         return res.status(200).json({ ok:true, outcome:'not_a_lead_email' });
       }
 
       adfXml = sanitizeXml(adfXml);
 
-      // ADF → JS
+      // Parse XML
       let adfObj;
       try {
         const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '', allowBooleanAttributes: true });
         adfObj = parser.parse(adfXml);
       } catch (e) {
-        const msg = String(e && e.message || e);
-        logger.error('xml_parse_failed: ' + msg);
-        try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) { logger.error('archive_xml_failed: ' + String(ae && ae.message || ae)); }
-        return res.status(400).json({ ok:false, error:'xml_parse_failed', details: msg });
+        logger.error(`xml_parse_failed: ${String((e && e.message) || e)}`);
+        try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) {
+          logger.error(`archive_xml_failed: ${String((ae && ae.message) || ae)}`);
+        }
+        return res.status(400).json({ ok:false, error:'xml_parse_failed', details: String((e && e.message) || e) });
       }
 
       // Normalize + validate
       const leadData = normalizeAdf(adfObj);
       const zres = LeadSchema.safeParse(leadData);
       if (!zres.success) {
-        try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) { logger.error('archive_on_schema_fail: ' + String(ae && ae.message || ae)); }
+        try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) {
+          logger.error(`archive_on_schema_fail: ${String((ae && ae.message) || ae)}`);
+        }
         await db.collection('email_leads_invalid').add({
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          messageId,
+          messageId: messageId || null,
           subject: parsed.subject || null,
           errors: zres.error.flatten()
         });
         return res.status(422).json({ ok:false, error:'schema_validation_failed', details: zres.error.flatten() });
       }
 
-      // De-dupe + archive
+      // De-dupe key (Message-Id + ADF id)
       const mk = await markProcessedIfNew(messageId, leadData.meta.adfId);
-      try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) { logger.error('archive_ok_failed: ' + String(ae && ae.message || ae)); }
 
-      // Persist (first time only)
+      // Archive success (optional)
+      try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) {
+        logger.error(`archive_ok_failed: ${String((ae && ae.message) || ae)}`);
+      }
+
+      // Persist (only once)
       if (!mk.isDuplicate) {
         const savePayload = {
           ...leadData,
@@ -526,26 +547,24 @@ exports.receiveEmailLeadV2 = onRequest(
         await saveLeadDoc(mk.docId, savePayload);
       }
 
-      logger.info('lead_saved', { adfId: leadData.meta.adfId, messageId, duplicate: mk.isDuplicate });
+      logger.info(`Saved lead adfId=${leadData.meta.adfId} messageId=${messageId} duplicate=${mk.isDuplicate}`);
       return res.status(200).json({ ok: true, duplicate: mk.isDuplicate, dedupeKey: mk.docId, messageId });
 
     } catch (err) {
-      // ***** FIXED CATCH BLOCK (stringifies params for logger) *****
-      const msg = (err && err.message) ? String(err.message) : String(err);
+      // *** SAFE catch block (no logger multi-arg pitfalls) ***
+      const msg   = (err && err.message) ? String(err.message) : String(err);
       const stack = (err && err.stack) ? String(err.stack) : '';
-      logger.error('receiveEmailLead_uncaught: ' + msg + ' stack=' + stack);
+      logger.error(`receiveEmailLead_uncaught: ${msg}`, { stack });
 
-      // Best-effort archive of raw body
       try {
         const rawStr =
           (typeof req.body === 'string') ? req.body :
           (Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : '');
-        const msgId = req.get('X-Gmail-Message-Id') || ('error-' + Date.now());
+        const msgId = req.get('X-Gmail-Message-Id') || (`error-${Date.now()}`);
         await archiveToGcs({ messageId: msgId, rfc822: rawStr });
       } catch (archiveErr) {
-        logger.error('archive_on_uncaught_failed: ' + String((archiveErr && archiveErr.message) || archiveErr));
+        logger.error(`archive_on_uncaught_failed: ${String((archiveErr && archiveErr.message) || archiveErr)}`);
       }
-
       return res.status(500).json({ ok: false, error: 'internal_error' });
     }
   }
