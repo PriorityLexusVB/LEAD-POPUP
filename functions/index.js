@@ -16,9 +16,9 @@ const storage = admin.storage();
 
 // ---- Config ----
 const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2MB
-const DEDUPE_COLL   = process.env.DEDUPE_COLL    || 'email_ingest';
-const LEADS_COLL    = process.env.LEADS_COLL     || 'email_leads';
-const ARCHIVE_BUCKET= process.env.ARCHIVE_BUCKET || ''; // optional
+const DEDUPE_COLL    = process.env.DEDUPE_COLL    || 'email_ingest';
+const LEADS_COLL     = process.env.LEADS_COLL     || 'email_leads';
+const ARCHIVE_BUCKET = process.env.ARCHIVE_BUCKET || ''; // optional
 
 // ---- Helpers ----
 function base64UrlToUtf8(maybeB64Url) {
@@ -41,7 +41,6 @@ function extractAdfXml(str) {
 
 function sanitizeXml(xmlString) {
   if (!xmlString) return xmlString;
-  // Encode stray ampersands that are not part of known entities
   return xmlString.replace(/&(?!(amp;|lt;|gt;|quot;|apos;))/g, '&amp;');
 }
 
@@ -64,7 +63,7 @@ function normalizePhoneDigits(x) {
 }
 function phonePretty(d) {
   if (!d || d.length !== 10) return null;
-  return '(' + d.slice(0,3) + ') ' + d.slice(3,6) + '-' + d.slice(6);
+  return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
 }
 function normalizeZip(x) {
   const m = (x || '').match(/\b\d{5}(-\d{4})?\b/);
@@ -79,11 +78,11 @@ function toNum(x) {
 function parseKeyValsFromCdata(text) {
   const out = {};
   const s = (text || '').replace(/\r/g, '');
-  const lines = s.split('\n').flatMap(function(line) {
+  const lines = s.split('\n').flatMap(line => {
     const parts = [];
-    var cursor = 0;
-    var regex = /, (?=[A-Z][a-zA-Z ]+:)/g;
-    var m;
+    let cursor = 0;
+    const regex = /, (?=[A-Z][a-zA-Z ]+:)/g;
+    let m;
     while ((m = regex.exec(line))) {
       parts.push(line.slice(cursor, m.index));
       cursor = m.index + 2;
@@ -91,24 +90,23 @@ function parseKeyValsFromCdata(text) {
     parts.push(line.slice(cursor));
     return parts;
   });
-  for (var i = 0; i < lines.length; i++) {
-    var L = lines[i];
-    var m = L.match(/\s*([^:]+):\s*(.+)$/);
+  for (const L of lines) {
+    const m = L.match(/\s*([^:]+):\s*(.+)$/);
     if (m) out[m[1].trim()] = m[2].trim();
   }
   return out;
 }
 
 function parsePreferredContactFromCdata(text) {
-  var m = (text || '').match(/Preferred Contact Method:\s*([a-z]+)\b/i);
+  const m = (text || '').match(/Preferred Contact Method:\s*([a-z]+)\b/i);
   return m ? m[1].toLowerCase() : null;
 }
 
 function parseOptionalQuestionsFromCdata(text) {
-  var arr = [];
-  var s = (text || '').replace(/\r/g, '');
-  var re = /Question:\s*(.+?)\s+Check:\s*([^\n,]+)(?:,\s*Response:\s*([^\n]+))?/gi;
-  var m;
+  const arr = [];
+  const s = (text || '').replace(/\r/g, '');
+  const re = /Question:\s*(.+?)\s+Check:\s*([^\n,]+)(?:,\s*Response:\s*([^\n]+))?/gi;
+  let m;
   while ((m = re.exec(s))) {
     arr.push({ question: m[1].trim(), check: (m[2] || '').trim(), response: (m[3] || '').trim() || null });
   }
@@ -116,24 +114,24 @@ function parseOptionalQuestionsFromCdata(text) {
 }
 
 function parseCampaignBitsFromCdata(text) {
-  var kv = parseKeyValsFromCdata(text);
-  function pick(name) {
-    var key = Object.keys(kv).find(function(k){ return k.toLowerCase() === name.toLowerCase(); });
+  const kv = parseKeyValsFromCdata(text);
+  const pick = (name) => {
+    const key = Object.keys(kv).find(k => k.toLowerCase() === name.toLowerCase());
     return key ? kv[key] : null;
-  }
-  var clickPathUrl = pick('Click Path');
-  var utm = {};
+  };
+  const clickPathUrl = pick('Click Path');
+  const utm = {};
   try {
-    var url = new URL(clickPathUrl);
-    var p = url.searchParams;
+    const url = new URL(clickPathUrl);
+    const p = url.searchParams;
     utm.source   = p.get('utm_source')   || null;
     utm.medium   = p.get('utm_medium')   || null;
     utm.campaign = p.get('utm_campaign') || null;
     utm.term     = p.get('utm_term')     || null;
     utm.content  = p.get('utm_content')  || null;
-  } catch (_e) {}
+  } catch (_) {}
   return {
-    clickPathUrl: clickPathUrl,
+    clickPathUrl,
     primaryCampaignSource: pick('Primary PPC Campaign Source'),
     adwordsClickId: pick('Adwords Click Id') || pick('AdWords Click Id') || pick('GCLID') || null,
     networkType: pick('Network Type'),
@@ -145,26 +143,25 @@ function parseCampaignBitsFromCdata(text) {
     condition: pick('Condition'),
     price: pick('Price'),
     _rawPairs: kv,
-    utm: utm
+    utm
   };
 }
 
 async function getAdfXml(parsed, rfc822) {
   // 1) attachments
   if (Array.isArray(parsed.attachments)) {
-    for (var i = 0; i < parsed.attachments.length; i++) {
-      var a = parsed.attachments[i];
+    for (const a of parsed.attachments) {
       try {
-        var ct = (a.contentType || '').toLowerCase();
-        var name = (a.filename || '').toLowerCase();
-        if (ct.indexOf('xml') >= 0 || name.endsWith('.xml')) {
-          var xml = a.content.toString('utf8');
-          var hit = extractAdfXml(xml);
+        const ct = (a.contentType || '').toLowerCase();
+        const name = (a.filename || '').toLowerCase();
+        if (ct.includes('xml') || name.endsWith('.xml')) {
+          const xml = a.content.toString('utf8');
+          const hit = extractAdfXml(xml);
           if (hit) { logger.info('ADF found in attachment:', a.filename || ct); return hit; }
         }
         if (a.content && a.content.length) {
-          var maybe = a.content.toString('utf8');
-          var hit2 = extractAdfXml(maybe);
+          const maybe = a.content.toString('utf8');
+          const hit2 = extractAdfXml(maybe);
           if (hit2) { logger.info('ADF found in attachment (generic):', a.filename || ct); return hit2; }
         }
       } catch (e) { logger.warn('Attachment scan error:', e && e.message); }
@@ -172,61 +169,60 @@ async function getAdfXml(parsed, rfc822) {
   }
   // 2) html-decoded
   if (parsed.html) {
-    var decoded = decodeHtmlEntities(parsed.html.toString());
-    var hit = extractAdfXml(decoded);
+    const decoded = decodeHtmlEntities(parsed.html.toString());
+    const hit = extractAdfXml(decoded);
     if (hit) { logger.info('ADF found in decoded HTML'); return hit; }
   }
   // 3) text
   if (parsed.text) {
-    var hit3 = extractAdfXml(parsed.text.toString());
+    const hit3 = extractAdfXml(parsed.text.toString());
     if (hit3) { logger.info('ADF found in text body'); return hit3; }
   }
   // 4) raw fallback
-  var hit4 = extractAdfXml(rfc822);
+  const hit4 = extractAdfXml(rfc822);
   if (hit4) { logger.info('ADF found in raw RFC822'); return hit4; }
   return null;
 }
 
 // ---- ADF normalization ----
 function normalizeAdf(adfObj) {
-  var adf = adfObj && adfObj.adf ? adfObj.adf : {};
-  var p = adf.prospect || {};
-  var adfId = (p.id && (p.id['#text'] || p.id)) || null;
+  const adf = adfObj && adfObj.adf ? adfObj.adf : {};
+  const p = adf.prospect || {};
+  const adfId = (p.id && (p.id['#text'] || p.id)) || null;
 
-  var contact = p.customer && p.customer.contact ? p.customer.contact : {};
-  function toArray(v){ return Array.isArray(v) ? v : (v ? [v] : []); }
-  var names = toArray(contact.name);
-  function findName(part) {
-    for (var i=0;i<names.length;i++) {
-      var n = names[i];
+  const contact = p.customer && p.customer.contact ? p.customer.contact : {};
+  const toArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+  const names = toArray(contact.name);
+  const findName = (part) => {
+    for (const n of names) {
       if (n && n.part === part) return (n['#text'] || n) || null;
     }
     return null;
-  }
-  var firstName = findName('first');
-  var lastName  = findName('last');
-  var email = contact.email || null;
+  };
+  const firstName = findName('first');
+  const lastName  = findName('last');
+  const email = contact.email || null;
 
-  var phoneRaw = null;
+  let phoneRaw = null;
   if (Array.isArray(contact.phone)) {
     phoneRaw = (contact.phone[0] && (contact.phone[0]['#text'] || contact.phone[0])) || null;
   } else if (contact.phone) {
     phoneRaw = contact.phone['#text'] || contact.phone || null;
   }
-  var phoneDigits = normalizePhoneDigits(phoneRaw);
-  var phonePrettyVal = phonePretty(phoneDigits);
-  var zip = normalizeZip(p.customer && p.customer.contact && p.customer.contact.address ? p.customer.contact.address.postalcode : null);
+  const phoneDigits = normalizePhoneDigits(phoneRaw);
+  const phonePrettyVal = phonePretty(phoneDigits);
+  const zip = normalizeZip(p.customer && p.customer.contact && p.customer.contact.address ? p.customer.contact.address.postalcode : null);
 
-  var vehicles = toArray(p.vehicle);
-  var trade = vehicles.find(function(v){ return v && v.interest === 'trade-in'; }) || null;
-  var buy   = vehicles.find(function(v){ return v && v.interest === 'buy'; }) || null;
+  const vehicles = toArray(p.vehicle);
+  const trade = vehicles.find(v => v && v.interest === 'trade-in') || null;
+  const buy   = vehicles.find(v => v && v.interest === 'buy') || null;
 
-  var cdataText = (p.customer && p.customer.comments) || null;
-  var preferred = parsePreferredContactFromCdata(cdataText);
-  var optionalQuestions = parseOptionalQuestionsFromCdata(cdataText);
-  var campaign = parseCampaignBitsFromCdata(cdataText);
+  const cdataText = (p.customer && p.customer.comments) || null;
+  const preferred = parsePreferredContactFromCdata(cdataText);
+  const optionalQuestions = parseOptionalQuestionsFromCdata(cdataText);
+  const campaign = parseCampaignBitsFromCdata(cdataText);
 
-  var tradeIn = trade ? {
+  const tradeIn = trade ? {
     status: trade.status || null,
     year: toNum(trade.year),
     make: trade.make || null,
@@ -236,7 +232,7 @@ function normalizeAdf(adfObj) {
     comments: trade.comments || null
   } : null;
 
-  var interest = buy ? {
+  const interest = buy ? {
     status: buy.status || null,
     year: toNum(buy.year),
     make: buy.make || null,
@@ -250,14 +246,14 @@ function normalizeAdf(adfObj) {
     odometer: toNum(buy.odometer)
   } : null;
 
-  var validation = {
+  const validation = {
     hasEmailOrPhone: Boolean(email || phoneDigits),
     emailLooksValid: email ? /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) : null,
     phoneDigits10: phoneDigits ? phoneDigits.length === 10 : null,
     zipLooksValid: zip ? /^\d{5}(-\d{4})?$/.test(zip) : null
   };
 
-  var customerName = [firstName, lastName].filter(function(x){ return !!x; }).join(' ') || 'Unknown Lead';
+  const customerName = [firstName, lastName].filter(Boolean).join(' ') || 'Unknown Lead';
 
   return {
     status: 'new',
@@ -265,27 +261,27 @@ function normalizeAdf(adfObj) {
     comments: cdataText,
     timestamp: p.requestdate ? new Date(p.requestdate).getTime() : Date.now(),
     receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-    customerName: customerName,
-    vehicleName: [interest && interest.year, interest && interest.make, interest && interest.model].filter(function(x){return !!x;}).join(' '),
+    customerName,
+    vehicleName: [interest && interest.year, interest && interest.make, interest && interest.model].filter(Boolean).join(' '),
 
     meta: {
-      adfId: adfId,
+      adfId,
       requestDate: p.requestdate || null,
       vendorName: p.vendor && p.vendor.vendorname || null,
       providerName: p.provider && (p.provider.name && (p.provider.name['#text'] || p.provider.name)) || null,
       providerUrl: p.provider && p.provider.url || null
     },
     customer: {
-      firstName: firstName,
-      lastName: lastName,
-      email: email,
-      phoneDigits: phoneDigits,
+      firstName,
+      lastName,
+      email,
+      phoneDigits,
       phonePretty: phonePrettyVal,
-      zip: zip,
+      zip,
       preferredContactMethod: preferred
     },
-    tradeIn: tradeIn,
-    interest: interest,
+    tradeIn,
+    interest,
     marketing: {
       clickPathUrl: campaign.clickPathUrl,
       primaryCampaignSource: campaign.primaryCampaignSource,
@@ -300,8 +296,8 @@ function normalizeAdf(adfObj) {
       condition: campaign.condition || null,
       _allParsedPairs: campaign._rawPairs
     },
-    optionalQuestions: optionalQuestions,
-    validation: validation
+    optionalQuestions,
+    validation
   };
 }
 
@@ -382,13 +378,11 @@ const LeadSchema = z.object({
 async function archiveToGcs(opts) {
   if (!ARCHIVE_BUCKET) return;
   const bucket = storage.bucket(ARCHIVE_BUCKET);
-  const messageId = opts.messageId;
-  const rfc822 = opts.rfc822;
-  const adfXml = opts.adfXml;
-  const safeId = (messageId || ('no-msgid-' + Date.now())).replace(/[^\w.-]+/g, '_');
+  const { messageId, rfc822, adfXml } = opts;
+  const safeId = (messageId || `no-msgid-${Date.now()}`).replace(/[^\w.-]+/g, '_');
   const date = new Date().toISOString().slice(0,10);
-  const rawPath = 'raw/' + date + '/' + safeId + '.eml';
-  const adfPath = 'adf/' + date + '/' + safeId + '.xml';
+  const rawPath = `raw/${date}/${safeId}.eml`;
+  const adfPath = `adf/${date}/${safeId}.xml`;
   await bucket.file(rawPath).save(Buffer.from(rfc822, 'utf8'), { contentType: 'message/rfc822' });
   if (adfXml) {
     await bucket.file(adfPath).save(Buffer.from(adfXml, 'utf8'), { contentType: 'application/xml' });
@@ -396,7 +390,7 @@ async function archiveToGcs(opts) {
 }
 
 async function markProcessedIfNew(messageId, adfId) {
-  const key = (messageId || 'no-msgid') + '__' + (adfId || 'no-adfid');
+  const key = `${messageId || 'no-msgid'}__${adfId || 'no-adfid'}`;
   const ref = db.collection(DEDUPE_COLL).doc(key);
   const existing = await ref.get();
   if (existing.exists) return { isDuplicate: true, docId: key };
@@ -414,11 +408,11 @@ async function saveLeadDoc(docId, payload) {
 }
 
 // ---- Function (Firebase v2) ----
-exports.receiveEmailLead = onRequest(
+exports.receiveEmailLeadV2 = onRequest(
   {
     region: 'us-central1',
     secrets: ['GMAIL_WEBHOOK_SECRET'],
-    // minInstances: 1,      // ← leave commented/removed to avoid the $4.50/month
+    // minInstances: 1, // leave off to avoid ~$4.50/mo minimum
     memory: '256MiB',
     timeoutSeconds: 120,
   },
@@ -470,7 +464,7 @@ exports.receiveEmailLead = onRequest(
       let adfXml = await getAdfXml(parsed, rfc822);
       if (!adfXml) {
         logger.warn('adf_not_found (graceful_exit)', {
-          messageId: messageId,
+          messageId,
           subject: parsed.subject || null,
           from: (parsed.from && parsed.from.text) || null,
         });
@@ -498,7 +492,7 @@ exports.receiveEmailLead = onRequest(
         try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) { logger.error('archive_on_schema_fail', ae && ae.message); }
         await db.collection('email_leads_invalid').add({
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          messageId: messageId,
+          messageId,
           subject: parsed.subject || null,
           errors: zres.error.flatten()
         });
@@ -535,7 +529,7 @@ exports.receiveEmailLead = onRequest(
         const rawStr =
           (typeof req.body === 'string') ? req.body :
           (Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : '');
-        const msgId = req.get('X-Gmail-Message-Id') || ('error-' + Date.now());
+        const msgId = req.get('X-Gmail-Message-Id') || (`error-${Date.now()}`);
         await archiveToGcs({ messageId: msgId, rfc822: rawStr });
       } catch (archiveErr) {
         logger.error('archive_on_uncaught_failed', archiveErr && archiveErr.message);
@@ -544,3 +538,4 @@ exports.receiveEmailLead = onRequest(
     }
   }
 );
+
