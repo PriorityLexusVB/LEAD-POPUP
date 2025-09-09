@@ -532,12 +532,9 @@ exports.receiveEmailLeadV2 = onRequest(
       return res.status(200).json({ ok: true, duplicate: mk.isDuplicate, dedupeKey: mk.docId, messageId });
 
     } catch (err) {
-      // ---- SAFE CATCH: never pass objects to logger.error ----
       const msg = (err && err.message) ? String(err.message) : String(err);
       const stack = (err && err.stack) ? String(err.stack) : '';
       logger.error('receiveEmailLead_uncaught: ' + msg + ' stack=' + stack);
-
-      // Best-effort archive raw
       try {
         const rawStr =
           (typeof req.body === 'string') ? req.body :
@@ -545,8 +542,7 @@ exports.receiveEmailLeadV2 = onRequest(
         const msgId = req.get('X-Gmail-Message-Id') || ('error-' + Date.now());
         await archiveToGcs({ messageId: msgId, rfc822: rawStr });
       } catch (archiveErr) {
-        logger.error('archive_on_uncaught_failed: ' +
-          String((archiveErr && archiveErr.message) || archiveErr));
+        logger.error('archive_on_uncaught_failed: ' + String((archiveErr && archiveErr.message) || archiveErr));
       }
       return res.status(500).json({ ok: false, error: 'internal_error' });
     }
