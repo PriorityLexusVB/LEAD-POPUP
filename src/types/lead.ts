@@ -46,4 +46,7 @@ export type Lead = {
   // Deep link
   cdkUrl?: string;
   cdkLeadId?: string;
+
+  // New field
+  preferredContactMethod?: string;
 };

@@ -111,6 +111,14 @@ export default function LeadCard({ lead, onUpdate }: Props) {
               );
             })()}
           </div>
+          
+          {lead.preferredContactMethod && (
+            <div className="text-xs">
+              <Badge variant="outline" className="px-2 py-0.5">
+                Preferred: {lead.preferredContactMethod[0].toUpperCase() + lead.preferredContactMethod.slice(1)}
+              </Badge>
+            </div>
+          )}
 
           {lead.email && (
             <IconTextRow icon={<Mail className="h-4 w-4" aria-hidden />}>
@@ -247,5 +255,3 @@ export default function LeadCard({ lead, onUpdate }: Props) {
     </Card>
   );
 }
-
-    
