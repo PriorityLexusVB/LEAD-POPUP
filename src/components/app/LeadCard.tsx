@@ -19,6 +19,15 @@ import { PrevOwnerBadges } from "./PrevOwnerBadges";
 import { Mail, Phone, CarFront, Link2, Clock, Sparkles, Check, AlertCircle, ExternalLink } from "lucide-react";
 import { type LeadStatus } from "@/types/lead";
 
+function sanitizeNarrativeForDisplay(n?: string) {
+  if (!n) return undefined;
+  const DROP = /(Primary PPC Campaign|Secondary PPC Campaign|Click Id:|Expires:|Network Type:|Lexus Dealercode|Vehicle Prices|Lexus Sourceid|https?:\/\/)/i;
+  return n
+    .split(/\r?\n/)
+    .map(s => s.replace(/\u00A0/g, " ").trim())
+    .filter(s => s && !DROP.test(s))
+    .join("\n") || undefined;
+}
 
 type Props = {
   lead: Lead;
@@ -28,6 +37,7 @@ type Props = {
 export default function LeadCard({ lead, onUpdate }: Props) {
   const { toast } = useToast();
   const [isAiLoading, startAiTransition] = useTransition();
+  const cleanNarrative = sanitizeNarrativeForDisplay(lead.narrative);
 
   const { relative, exact } = relativeTimeWithExact(lead.createdAt);
 
@@ -37,7 +47,7 @@ export default function LeadCard({ lead, onUpdate }: Props) {
         const suggestion = await getAiSuggestion({
             customerName: lead.customerName,
             vehicle: lead.vehicleOfInterest || "vehicle",
-            comments: lead.narrative || "No comments provided",
+            comments: cleanNarrative || "No comments provided",
         });
         await onUpdate(lead.id, { suggestion });
       } catch (error) {
@@ -180,8 +190,8 @@ export default function LeadCard({ lead, onUpdate }: Props) {
 
         {/* 1) COMMENTS / QUESTIONS (first) */}
         <Section title="Comments / Questions">
-          {lead.narrative
-            ? <div className="text-sm text-muted-foreground leading-6 whitespace-pre-wrap">{lead.narrative}</div>
+          {cleanNarrative
+            ? <div className="text-sm text-muted-foreground leading-6 whitespace-pre-wrap">{cleanNarrative}</div>
             : <div className="text-sm text-muted-foreground italic">No message provided.</div>}
         </Section>
 

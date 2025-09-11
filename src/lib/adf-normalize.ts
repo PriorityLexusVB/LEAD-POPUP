@@ -18,57 +18,50 @@ type Extracted = {
   dashboardLinks: string[];
   qa: { question: string; answer: string }[];
   preferred?: string;
+  priceFromBlob?: number | undefined;
 };
 
 function extractDealerEProcessCdata(cdata: string): Extracted {
-  const lines = (cdata || "")
-    .split(/\r?\n/)
-    .map(l => l.trim())
-    .filter(Boolean);
+  const rawLines = (cdata || "").split(/\r?\n/);
+  const lines = rawLines.map(l => l.replace(/\u00A0/g, " ").trim()).filter(Boolean);
 
   const clickPaths: string[] = [];
   const dashboardLinks: string[] = [];
   const qa: { question: string; answer: string }[] = [];
-  const narrative: string[] = [];
+  const kept: string[] = [];
   let preferred: string | undefined;
+  let priceFromBlob: number | undefined;
 
-  // Known junk to drop from narrative
-  const DROP_LINE = /^(primary ppc campaign|secondary ppc campaign|source:|click id:|expires:|network type:|lexus dealercode|vehicle prices|lexus sourceid|datetime:|sara details:|everest dr details:|country:|bodystyle:|transmission:|condition:|price:)/i;
+  const DROP_PATTERNS: RegExp[] = [
+    /primary ppc campaign/i, /secondary ppc campaign/i, /\bsource:\s*adwords?/i,
+    /\bclick id:/i, /\bexpires:/i, /\bnetwork type:/i,
+    /\blexus dealercode/i, /\blexus sourceid/i,
+    /\bvehicle prices\b/i, /^price:\s*\d/i,
+    /\bdatetime:/i, /\bsara details:/i, /\beverest dr details:/i,
+    /\bcountry:/i, /\bbodystyle:/i, /\btransmission:/i, /\bcondition:/i,
+  ];
 
+  const isNoise = (s: string) => DROP_PATTERNS.some(r => r.test(s));
+  const urlGrab = (s: string) => s.match(/https?:\/\/\S+/g) || [];
+  const hasUrl  = (s: string) => /https?:\/\/\S+/.test(s);
+
+  // Collect Q&A
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lower = line.toLowerCase();
 
-    // URLs
-    if (lower.startsWith("click path:")) {
-      const urls = line.match(/https?:\/\/\S+/g) || [];
-      clickPaths.push(...urls);
-      continue;
-    }
-    if (lower.startsWith("return shopper")) {
-      const urls = line.match(/https?:\/\/\S+/g) || [];
-      dashboardLinks.push(...urls);
-      continue;
-    }
+    if (lower.startsWith("click path:")) { clickPaths.push(...urlGrab(line)); continue; }
+    if (lower.startsWith("return shopper")) { dashboardLinks.push(...urlGrab(line)); continue; }
+    if (/^dashboard lead:/i.test(line)) { dashboardLinks.push(...urlGrab(line)); continue; }
 
-    // Preferred contact (e.g., "Preferred Contact Method: email" or "Prefer text")
-    if (lower.startsWith("preferred contact method:")) {
-      preferred = line.split(":")[1]?.trim();
-      continue;
-    }
-    if (lower === "prefer text") {
-      preferred = "text";
-      // keep the hint also in narrative for reps to see
-      narrative.push("Prefer text");
-      continue;
-    }
+    if (lower.startsWith("preferred contact method:")) { preferred = line.split(":")[1]?.trim(); continue; }
+    if (lower === "prefer text") { preferred = "text"; kept.push("Prefer text"); continue; }
 
-    // Optional questions block
     if (/^optional questions/i.test(line)) continue;
+
     if (/^question:/i.test(line)) {
       const q = line.replace(/^question:\s*/i, "").trim();
       let a = "—";
-      // consume following lines until next question or end
       let j = i + 1;
       while (j < lines.length && !/^question:/i.test(lines[j])) {
         const ln = lines[j];
@@ -84,21 +77,35 @@ function extractDealerEProcessCdata(cdata: string): Extracted {
       continue;
     }
 
-    // Drop PPC/dealer boilerplate
-    if (DROP_LINE.test(lower)) continue;
+    if (/^vehicle prices\b/i.test(line)) {
+      for (let k = i + 1; k < Math.min(lines.length, i + 6); k++) {
+        const m = lines[k].match(/^\s*price:\s*([\d,]+(?:\.\d+)?)/i);
+        if (m) { const num = Number(m[1].replace(/,/g, "")); if (!Number.isNaN(num)) priceFromBlob = num; break; }
+      }
+      continue;
+    }
 
-    // Keep anything else as free-form narrative
-    narrative.push(line);
+    if (isNoise(line)) continue;
+    if (hasUrl(line)) continue;              // <- never let URL lines into narrative
+
+    kept.push(line);
   }
 
-  // dedupe & return
+  // Prefer a message-like answer from QA as narrative
+  const MESSAGE_KEYS = /(comment|message|notes?|additional|anything else|questions?)/i;
+  const messageFromQA = qa.find(q => MESSAGE_KEYS.test(q.question))?.answer;
+  let narrative = (messageFromQA && messageFromQA.toLowerCase() !== "no response" && messageFromQA !== "—")
+    ? messageFromQA
+    : kept.join("\n").trim() || undefined;
+
   const uniq = (arr: string[]) => Array.from(new Set(arr));
   return {
-    narrative: (narrative.join("\n").trim() || undefined),
+    narrative,
     clickPaths: uniq(clickPaths),
     dashboardLinks: uniq(dashboardLinks),
     qa,
     preferred,
+    priceFromBlob,
   };
 }
 
@@ -176,8 +183,10 @@ export function normalizeLexusSTAR(xml: string): Lead {
   const phone = hdr?.CustomerProspect?.ProspectParty?.SpecifiedPerson?.TelephoneCommunication?.LocalNumber;
 
   const v = bod?.ProcessSalesLeadDataArea?.SalesLead?.SalesLeadDetail?.SalesLeadLineItem?.SalesLeadVehicleLineItem?.SalesLeadVehicle;
-
-  const customerComments = safeTrim(hdr?.CustomerComments); // STAR often stores meta here (we'll keep it minimal)
+  
+  const cc = (hdr?.CustomerComments as string) || "";
+  const metaLike = /(Ownership and Service|Number of Leads Previously Submitted)/i;
+  const narrative = cc && !metaLike.test(cc) ? cc : undefined;
 
   const vehicleHeadline = [v?.ModelYear, v?.MakeString || v?.ManufacturerName, v?.Model].filter(Boolean).join(" ");
 
@@ -190,8 +199,7 @@ export function normalizeLexusSTAR(xml: string): Lead {
     email: safeTrim(email),
     phone: safeTrim(phone),
 
-    // Keep only human-useful comments; STAR rarely includes PPC junk here
-    narrative: customerComments,
+    narrative: narrative,
 
     clickPathUrls: [], // STAR sample didn’t include; add if present in your feed
 
