@@ -1,16 +1,61 @@
 import { XMLParser } from "fast-xml-parser";
 import { Lead, QA } from "@/types/lead";
 
-// -------- COMMON UTILS --------
-function dedupe(links: (string|undefined)[]) {
-  return Array.from(new Set(links.filter(Boolean))) as string[];
+// --- helpers ---
+function safe(s?: string) { return (s ?? "").trim() || undefined; }
+
+function extractXmlSegment(raw: string, root: string) {
+  const m = raw.match(new RegExp(`<${root}[\\s\\S]*?<\\/${root}>`, "m"));
+  return m ? m[0] : raw; // fallback if caller already passed pure xml
 }
 
-function safeTrim(s?: string) { return (s ?? "").trim() || undefined; }
-
-function fullName(first?: string, last?: string) {
-  return `${safeTrim(first) ?? ""} ${safeTrim(last) ?? ""}`.trim() || "Unknown";
+function mapPreferredContact(s?: string) {
+  const v = (s || "").toLowerCase();
+  if (v.includes("email")) return "email";
+  if (v.includes("phone") || v.includes("day phone") || v.includes("cell")) return "phone";
+  if (v.includes("text")) return "text";
+  return safe(s);
 }
+
+/** Remove bracketed tags + obvious system meta from STAR "CustomerComments" */
+function sanitizeStarComments(s?: string) {
+  if (!s) return undefined;
+  let t = s;
+  // strip bracketed blocks like [Customer Comments] [Vehicle] ...
+  t = t.replace(/\[[^\]]+\]/g, " ").replace(/\s+/g, " ").trim();
+
+  // drop boilerplate phrases
+  const DROP = [
+    /ownership and service history not available/i,
+    /unknown vehicle/i,
+    /number of leads previously submitted/i,
+  ];
+  for (const r of DROP) t = t.replace(r, "").trim();
+
+  // remove generic "comments:" prefix if present
+  t = t.replace(/^comments:\s*/i, "").trim();
+
+  return t.length >= 3 ? t : undefined;
+}
+
+/** Parse the plaintext tail after the XML (many STAR emails include a second summary) */
+function extractTailFields(raw: string) {
+  const out: { preferred?: string; comments?: string } = {};
+  const parts = raw.split(/<\/ProcessSalesLead>/i);
+  if (parts.length < 2) return out;
+  const tail = parts[1];
+
+  // Preferred Contact: Home Email
+  const pref = tail.match(/Preferred Contact:\s*(.+)/i)?.[1];
+  if (pref) out.preferred = pref.trim();
+
+  // CUSTOMER COMMENT INFORMATION -> Comments: <text>
+  const comments = tail.match(/CUSTOMER COMMENT INFORMATION[\s\S]*?Comments:\s*([\s\S]*?)(?:\n{2,}|\r{2,}|$)/i)?.[1];
+  if (comments) out.comments = comments.trim();
+
+  return out;
+}
+
 
 type Extracted = {
   narrative?: string;
@@ -123,7 +168,7 @@ export function normalizeDealerEProcess(xml: string): Lead {
   const c = prospect?.customer ?? {};
   const contact = c?.contact ?? {};
 
-  const { narrative, clickPaths, dashboardLinks, qa, preferred } =
+  const { narrative, clickPaths, dashboardLinks, qa, preferred, priceFromBlob } =
     extractDealerEProcessCdata(String(c?.comments ?? ""));
 
   const vehicleHeadline = [v?.year, v?.make, v?.model].filter(Boolean).join(" ");
@@ -155,7 +200,7 @@ export function normalizeDealerEProcess(xml: string): Lead {
       stock: v?.stock || undefined,
       vin: v?.vin || undefined,
       odometer: v?.odometer || undefined,
-      price: v?.price || undefined,
+      price: v?.price ?? priceFromBlob,
     },
 
     // map when those flags exist in your feed
@@ -170,55 +215,72 @@ export function normalizeDealerEProcess(xml: string): Lead {
 }
 
 
-// -------- Lexus STAR ProcessSalesLead (your second sample) --------
-export function normalizeLexusSTAR(xml: string): Lead {
+// ------------------ STAR normalizer ------------------
+export function normalizeLexusSTAR(raw: string): Lead {
+  // 1) ensure we’re parsing the actual XML
+  const xml = extractXmlSegment(raw, "ProcessSalesLead");
   const p = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
-  const doc = p.parse(xml);
-  const bod = doc?.ProcessSalesLead;
-  const hdr = bod?.ProcessSalesLeadDataArea?.SalesLead?.SalesLeadHeader;
+  const doc: any = p.parse(xml);
 
+  const root = doc?.ProcessSalesLead;
+  const area = root?.ProcessSalesLeadDataArea;
+  const hdr = area?.SalesLead?.SalesLeadHeader;
+  const detail = area?.SalesLead?.SalesLeadDetail;
+  const vehLine = detail?.SalesLeadLineItem?.SalesLeadVehicleLineItem;
+  const veh = vehLine?.SalesLeadVehicle;
+
+  // 2) basic fields
   const given = hdr?.CustomerProspect?.ProspectParty?.SpecifiedPerson?.GivenName;
   const family = hdr?.CustomerProspect?.ProspectParty?.SpecifiedPerson?.FamilyName;
   const email = hdr?.CustomerProspect?.ProspectParty?.SpecifiedPerson?.URICommunication?.URIID;
   const phone = hdr?.CustomerProspect?.ProspectParty?.SpecifiedPerson?.TelephoneCommunication?.LocalNumber;
+  const preferredXml = hdr?.CustomerProspect?.ProspectParty?.SpecifiedPerson?.ContactMethodTypeCode;
 
-  const v = bod?.ProcessSalesLeadDataArea?.SalesLead?.SalesLeadDetail?.SalesLeadLineItem?.SalesLeadVehicleLineItem?.SalesLeadVehicle;
-  
-  const cc = (hdr?.CustomerComments as string) || "";
-  const metaLike = /(Ownership and Service|Number of Leads Previously Submitted)/i;
-  const narrative = cc && !metaLike.test(cc) ? cc : undefined;
+  // 3) comments from XML, sanitized
+  const rawXmlComments = hdr?.CustomerComments as string | undefined;
+  const xmlNarrative = sanitizeStarComments(rawXmlComments);
 
-  const vehicleHeadline = [v?.ModelYear, v?.MakeString || v?.ManufacturerName, v?.Model].filter(Boolean).join(" ");
+  // 4) tail (plaintext) fallback
+  const tail = extractTailFields(raw);
+  const tailNarrative = sanitizeStarComments(tail.comments);
+  const preferredTail = tail.preferred;
 
+  // choose narrative (tail if it looks better than xml meta)
+  const narrative = tailNarrative ?? xmlNarrative ?? undefined;
+
+  // 5) vehicle
+  const year = veh?.ModelYear ? Number(veh.ModelYear) : undefined;
+  const make = veh?.MakeString || veh?.ManufacturerName;
+  const model = veh?.Model;
+  const trim = veh?.TrimCode;
+  const vin = veh?.VehicleID;
+  const vehicleHeadline = [year, make, model, trim].filter(Boolean).join(" ");
+
+  // 6) build lead
   return {
     id: String(hdr?.DocumentIdentificationGroup?.DocumentIdentification?.DocumentID ?? ""),
-    createdAt: hdr?.LeadCreationDateTime ?? Date.now(),
+    createdAt: hdr?.LeadCreationDateTime || hdr?.DocumentDateTime || new Date().toISOString(),
     status: "new",
-    customerName: fullName(given, family),
+    customerName: `${safe(given) ?? ""} ${safe(family) ?? ""}`.trim() || "Unknown",
 
-    email: safeTrim(email),
-    phone: safeTrim(phone),
+    email: safe(email),
+    phone: safe(phone),
+    preferredContactMethod: mapPreferredContact(preferredTail ?? preferredXml),
 
-    narrative: narrative,
-
-    clickPathUrls: [], // STAR sample didn’t include; add if present in your feed
+    narrative,                    // clean customer message (if any)
+    clickPathUrls: [],            // STAR usually doesn’t include these
 
     vehicleOfInterest: vehicleHeadline || undefined,
     vehicle: {
-      year: v?.ModelYear ? Number(v.ModelYear) : undefined,
-      make: v?.MakeString || v?.ManufacturerName,
-      model: v?.Model,
-      trim: v?.TrimCode,
-      vin: v?.VehicleID,
+      year, make, model, trim, vin,
     },
 
-    // Plug these when fields appear in STAR feed
+    // If STAR feed adds these later, wire them here:
     previousToyotaCustomer: undefined,
     previousLexusCustomer: undefined,
 
     tradeIn: undefined,
-    qa: [],
-
+    qa: [],                       // STAR rarely includes Q&A; keep empty
     cdkLeadId: String(hdr?.DocumentIdentificationGroup?.DocumentIdentification?.DocumentID ?? ""),
   };
 }
