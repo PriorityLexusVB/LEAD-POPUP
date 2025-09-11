@@ -704,5 +704,3 @@ exports.receiveEmailLeadV2 = onRequest(
     }
   }
 );
-
-    
