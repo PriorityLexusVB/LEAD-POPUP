@@ -63,7 +63,7 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
   const vehicleName = lead.vehicleName || "Not specified";
   const customerName = lead.customerName || "Valued Customer";
   
-  // Use the specific customer comments, not the full raw text block
+  // Use the specific customer comments from the nested lead object, not the raw text block
   const customerComments = lead.lead.comments || "No comments provided.";
   
   const { customer, tradeIn, optionalQuestions, marketing } = lead.lead;
