@@ -1,22 +1,24 @@
 "use client";
 
-import { type Lead, type LeadStatus } from "@/types/lead";
+import { type Lead } from "@/types/lead";
 import { relativeTimeWithExact, displayUrlLabel, compactTradeIn, buildCdkUrl, nonEmpty } from "@/lib/format";
-import { useTransition } from 'react';
-import { useToast } from "@/hooks/use-toast";
-import { getAiSuggestion } from "@/app/actions";
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { useTransition } from 'react';
+import { getAiSuggestion } from "@/app/actions";
+import { Section } from "./Section";
+import { IconTextRow } from "./IconTextRow";
+import { PrevOwnerBadges } from "./PrevOwnerBadges";
 
 import { Mail, Phone, CarFront, Link2, Clock, Sparkles, Check, AlertCircle, ExternalLink } from "lucide-react";
-import { IconTextRow } from "./IconTextRow";
-import { Section } from "./Section";
-import { PrevOwnerBadges } from "./PrevOwnerBadges";
+import { type LeadStatus } from "@/types/lead";
+
 
 type Props = {
   lead: Lead;
@@ -56,6 +58,19 @@ export default function LeadCard({ lead, onUpdate }: Props) {
         description: `${lead.customerName}'s lead has been marked as handled.`,
     });
   }
+
+  const showVehicleSummaryTop =
+  Boolean(lead.vehicleOfInterest || lead.vehicle);
+
+  const hasVehicleDetailFields = Boolean(
+    lead.vehicle &&
+    (lead.vehicle.price ||
+    lead.vehicle.odometer ||
+    lead.vehicle.stock ||
+    lead.vehicle.vin ||
+    lead.vehicle.exteriorColor ||
+    lead.vehicle.interiorColor)
+  );
   
   return (
     <Card className="shadow-sm border border-border/60">
@@ -130,6 +145,37 @@ export default function LeadCard({ lead, onUpdate }: Props) {
               <a href={`tel:${lead.phone}`} className="underline underline-offset-2">{lead.phone}</a>
             </IconTextRow>
           )}
+
+          {/* Compact Vehicle Summary at the top (right under email/phone) */}
+          {showVehicleSummaryTop && (
+            <div className="pt-2 mt-2 border-t border-border/50 space-y-1.5">
+              <IconTextRow icon={<CarFront className="h-4 w-4" aria-hidden />}>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-medium">
+                    {lead.vehicleOfInterest ||
+                      [lead.vehicle?.year, lead.vehicle?.make, lead.vehicle?.model, lead.vehicle?.trim]
+                        .filter(Boolean).join(" ")}
+                  </span>
+
+                  {lead.vehicle?.price && (
+                    <span className="text-xs text-muted-foreground">• Price: {lead.vehicle.price}</span>
+                  )}
+                  {lead.vehicle?.odometer && (
+                    <span className="text-xs text-muted-foreground">• Odometer: {lead.vehicle.odometer}</span>
+                  )}
+                  {lead.vehicle?.stock && (
+                    <span className="text-xs text-muted-foreground">• Stock: {lead.vehicle.stock}</span>
+                  )}
+                </div>
+              </IconTextRow>
+
+              {/* Previous Toyota/Lexus badges right under headline */}
+              <PrevOwnerBadges
+                prevToyota={lead.previousToyotaCustomer}
+                prevLexus={lead.previousLexusCustomer}
+              />
+            </div>
+          )}
         </div>
 
         {/* 1) COMMENTS / QUESTIONS (first) */}
@@ -155,28 +201,34 @@ export default function LeadCard({ lead, onUpdate }: Props) {
           </Section>
         ) : null}
 
-        {/* 3) VEHICLE OF INTEREST (headline + details) */}
-        {(lead.vehicleOfInterest || lead.vehicle) && (
-           <Section title="Vehicle of Interest">
-           {lead.vehicleOfInterest && <div className="text-sm font-medium">{lead.vehicleOfInterest}</div>}
-           <PrevOwnerBadges prevToyota={lead.previousToyotaCustomer} prevLexus={lead.previousLexusCustomer} />
-           {lead.vehicle ? (
-             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-muted-foreground mt-2">
-               {lead.vehicle.year || lead.vehicle.make || lead.vehicle.model ? (
-                 <div><span className="font-medium text-foreground">Model:</span> {[
-                   lead.vehicle.year, lead.vehicle.make, lead.vehicle.model, lead.vehicle.trim
-                 ].filter(Boolean).join(" ")}</div>
-               ) : null}
-               {lead.vehicle.price && <div><span className="font-medium text-foreground">Price:</span> {lead.vehicle.price}</div>}
-               {lead.vehicle.odometer && <div><span className="font-medium text-foreground">Odometer:</span> {lead.vehicle.odometer}</div>}
-               {lead.vehicle.stock && <div><span className="font-medium text-foreground">Stock #:</span> {lead.vehicle.stock}</div>}
-               {lead.vehicle.vin && <div><span className="font-medium text-foreground">VIN:</span> {lead.vehicle.vin}</div>}
-               {lead.vehicle.exteriorColor && <div><span className="font-medium text-foreground">Ext. Color:</span> {lead.vehicle.exteriorColor}</div>}
-               {lead.vehicle.interiorColor && <div><span className="font-medium text-foreground">Int. Color:</span> {lead.vehicle.interiorColor}</div>}
-             </div>
-           ) : null}
-         </Section>
-        )}
+        {/* 3) Vehicle of Interest (details only if summary was shown above) */}
+        {(showVehicleSummaryTop && hasVehicleDetailFields) || (!showVehicleSummaryTop && (lead.vehicleOfInterest || hasVehicleDetailFields)) ? (
+          <Section title="Vehicle of Interest">
+            {/* If we didn't show the summary above, show the headline here */}
+            {!showVehicleSummaryTop && lead.vehicleOfInterest && (
+              <div className="text-sm font-medium">{lead.vehicleOfInterest}</div>
+            )}
+
+            {/* Details grid (only extra fields; headline already shown up top) */}
+            {lead.vehicle && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-muted-foreground mt-2">
+                {!showVehicleSummaryTop && (lead.vehicle.year || lead.vehicle.make || lead.vehicle.model) ? (
+                  <div><span className="font-medium text-foreground">Model:</span> {[
+                    lead.vehicle.year, lead.vehicle.make, lead.vehicle.model, lead.vehicle.trim
+                  ].filter(Boolean).join(" ")}</div>
+                ) : null}
+
+                {/* These are “extra” fields even when the summary is shown */}
+                {lead.vehicle.price && <div><span className="font-medium text-foreground">Price:</span> {lead.vehicle.price}</div>}
+                {lead.vehicle.odometer && <div><span className="font-medium text-foreground">Odometer:</span> {lead.vehicle.odometer}</div>}
+                {lead.vehicle.stock && <div><span className="font-medium text-foreground">Stock #:</span> {lead.vehicle.stock}</div>}
+                {lead.vehicle.vin && <div><span className="font-medium text-foreground">VIN:</span> {lead.vehicle.vin}</div>}
+                {lead.vehicle.exteriorColor && <div><span className="font-medium text-foreground">Ext. Color:</span> {lead.vehicle.exteriorColor}</div>}
+                {lead.vehicle.interiorColor && <div><span className="font-medium text-foreground">Int. Color:</span> {lead.vehicle.interiorColor}</div>}
+              </div>
+            )}
+          </Section>
+        ) : null}
 
         {/* 4) TRADE (if present) */}
         {lead.tradeIn && (
