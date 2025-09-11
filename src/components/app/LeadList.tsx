@@ -20,6 +20,9 @@ function normalizeFirestoreLead(doc: DocumentData): Lead {
         answer: q.response || q.check || "Not answered",
     })) || [];
     
+    // In a real scenario, you would parse this from the raw comments or another field.
+    const returnShopperUrl = (leadData.comments || '').includes('Return Shopper') ? leadData.marketing.clickPathUrl : undefined;
+
     return {
         id: doc.id,
         createdAt: data.receivedAt ? new Date(data.receivedAt.seconds * 1000) : new Date(data.timestamp),
@@ -36,6 +39,7 @@ function normalizeFirestoreLead(doc: DocumentData): Lead {
         } : undefined,
         campaignSource: leadData.marketing.primaryCampaignSource || undefined,
         clickPathUrl: leadData.marketing.clickPathUrl || undefined,
+        returnShopperUrl: returnShopperUrl,
         narrative: leadData.comments || undefined,
         qa: qa,
         cdkLeadId: leadData.meta.adfId, // Assuming adfId can be used as cdkLeadId

@@ -15,10 +15,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Skeleton } from "@/components/ui/skeleton";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
-
 import { Mail, Phone, CarFront, MessageSquareText, Link2, Clock, Sparkles, Check, AlertCircle, ExternalLink, Repeat } from "lucide-react";
 import { IconTextRow } from "./IconTextRow";
 import Link from "next/link";
+import { Section } from "./Section";
+
 
 type Props = {
   lead: Lead;
@@ -59,8 +60,6 @@ export default function LeadCard({ lead, onUpdate }: Props) {
     });
   }
   
-  const cdkUrl = buildCdkUrl(lead);
-
   return (
     <Card className="shadow-sm border border-border/60">
       <CardHeader className="py-3">
@@ -98,96 +97,99 @@ export default function LeadCard({ lead, onUpdate }: Props) {
         </div>
       </CardHeader>
 
-      <CardContent className="pt-0 space-y-4">
-        {/* Primary Information Box */}
-        <div className="rounded-xl border border-border/70 bg-muted/30 p-3 space-y-2">
-            {cdkUrl && (
-                 <div className="flex items-center justify-between pb-1 border-b border-border/50 mb-2">
-                    <div className="text-xs font-medium text-muted-foreground">Contact & Source</div>
-                    <a
-                    href={cdkUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-border/70 hover:bg-accent transition"
-                    >
-                    Open in CDK
-                    <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                    </a>
-                </div>
-            )}
+      <CardContent className="pt-0 space-y-5">
+        {/* ===== 1) Contact & Source (primary) ===== */}
+        <div className="rounded-xl border border-border/70 bg-muted/30 p-3 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-medium text-muted-foreground">Contact & Source</div>
+            {(() => {
+              const url = buildCdkUrl(lead);
+              if (!url) return null;
+              return (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-border/70 hover:bg-accent transition"
+                >
+                  Open in CDK <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                </a>
+              );
+            })()}
+          </div>
 
-          {lead.email ? (
+          {/* Minimal, actionable rows */}
+          {lead.email && (
             <IconTextRow icon={<Mail className="h-4 w-4" aria-hidden />}>
-              <a href={`mailto:${lead.email}`} className="underline underline-offset-2 break-all">
-                {lead.email}
-              </a>
+              <a href={`mailto:${lead.email}`} className="underline underline-offset-2 break-all">{lead.email}</a>
             </IconTextRow>
-          ) : null}
-
-          {lead.phone ? (
+          )}
+          {lead.phone && (
             <IconTextRow icon={<Phone className="h-4 w-4" aria-hidden />}>
-              <a href={`tel:${lead.phone}`} className="underline underline-offset-2">
-                {lead.phone}
-              </a>
+              <a href={`tel:${lead.phone}`} className="underline underline-offset-2">{lead.phone}</a>
             </IconTextRow>
-          ) : null}
-
-          {lead.tradeIn && compactTradeIn(lead.tradeIn) ? (
-            <IconTextRow icon={<Repeat className="h-4 w-4" aria-hidden />}>
-              <span className="font-medium">Trade-In:</span>&nbsp;
-              <span>{compactTradeIn(lead.tradeIn)}</span>
-            </IconTextRow>
-          ) : null}
-
-          {lead.campaignSource ? (
-            <IconTextRow icon={<Link2 className="h-4 w-4" aria-hidden />}>
-              <span className="font-medium">Campaign:</span>&nbsp;
-              <span className="text-muted-foreground">{lead.campaignSource}</span>
-            </IconTextRow>
-          ) : null}
-
-          {lead.clickPathUrl ? (
-            <IconTextRow icon={<Link2 className="h-4 w-4" aria-hidden />}>
-              <Link
-                href={lead.clickPathUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="underline underline-offset-2 break-all"
-              >
-                {displayUrlLabel(lead.clickPathUrl)}
-              </Link>
-            </IconTextRow>
-          ) : null}
+          )}
         </div>
 
-        {/* Narrative */}
-        {lead.narrative ? (
-          <div>
-            <div className="mb-1.5 flex items-center gap-1.5 text-sm font-medium">
-              <MessageSquareText className="h-4 w-4" aria-hidden />
-              <span>Message</span>
-            </div>
-            <p className="text-sm text-muted-foreground leading-6 whitespace-pre-wrap">
+        {/* ===== 2) Message (prioritized details) ===== */}
+        <Section title="Message">
+          {/* a) Customer comments/questions FIRST */}
+          {lead.narrative ? (
+            <div className="text-sm text-muted-foreground leading-6 whitespace-pre-wrap">
               {lead.narrative}
-            </p>
-          </div>
-        ) : null}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground italic">No message provided.</div>
+          )}
 
-        {/* Structured Q&A */}
-        {lead.qa && lead.qa.length > 0 ? (
-          <div className="space-y-2">
-            <Separator />
-            <div className="text-sm font-medium">Form Details</div>
+          {/* b) Vehicle of Interest */}
+          {lead.vehicleOfInterest && (
+            <IconTextRow icon={<CarFront className="h-4 w-4" aria-hidden />}>
+              <span>{lead.vehicleOfInterest}</span>
+            </IconTextRow>
+          )}
+
+          {/* c) Trade-in */}
+          {lead.tradeIn && compactTradeIn(lead.tradeIn) && (
+            <IconTextRow icon={<Repeat className="h-4 w-4" aria-hidden />}>
+              <span>Trade-In: {compactTradeIn(lead.tradeIn)}</span>
+            </IconTextRow>
+          )}
+
+          {/* d) Minimal useful links (short labels) */}
+          <div className="space-y-1 text-xs text-muted-foreground pt-2">
+            {lead.clickPathUrl && (
+              <div className="flex items-center gap-1.5">
+                <Link2 className="h-3.5 w-3.5" aria-hidden />
+                <a href={lead.clickPathUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                  {displayUrlLabel(lead.clickPathUrl)}
+                </a>
+              </div>
+            )}
+            {lead.returnShopperUrl && (
+              <div className="flex items-center gap-1.5">
+                <Link2 className="h-3.5 w-3.5" aria-hidden />
+                <a href={lead.returnShopperUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                  {displayUrlLabel(lead.returnShopperUrl)}
+                </a>
+              </div>
+            )}
+          </div>
+        </Section>
+
+        {/* ===== 3) Form Details (only if present) ===== */}
+        {lead.qa && lead.qa.length > 0 && (
+          <Section title="Form Details">
             <div className="space-y-2">
               {lead.qa.map((row, idx) => (
                 <div key={idx} className="rounded-lg border border-border/60 p-2.5">
-                  <div className="text-xs font-semibold tracking-wide text-foreground">{row.question}</div>
+                  <div className="text-xs font-semibold tracking-wide">{row.question}</div>
                   <div className="text-sm text-muted-foreground leading-6">{row.answer}</div>
                 </div>
               ))}
             </div>
-          </div>
-        ) : null}
+          </Section>
+        )}
 
         {/* AI Suggestion */}
         {(isAiLoading || lead.suggestion) && (
@@ -211,7 +213,7 @@ export default function LeadCard({ lead, onUpdate }: Props) {
             </Accordion>
         )}
 
-        {/* Footer / Actions */}
+        {/* ===== 4) Actions ===== */}
         <div className="flex items-center justify-end gap-2 pt-1">
           {!lead.suggestion && lead.status === 'new' && (
             <Button

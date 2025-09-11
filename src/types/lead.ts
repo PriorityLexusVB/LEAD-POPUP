@@ -29,6 +29,7 @@ export type Lead = {
   tradeIn?: TradeIn;
   campaignSource?: string; // e.g., "Google Ads"
   clickPathUrl?: string;   // full URL (we’ll display a shortened label)
+  returnShopperUrl?: string;
 
   // Narrative (customer free-form comment only)
   narrative?: string;
