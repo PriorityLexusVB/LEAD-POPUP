@@ -62,7 +62,9 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
 
   const vehicleName = lead.vehicleName || "Not specified";
   const customerName = lead.customerName || "Valued Customer";
-  const comments = lead.comments || "No comments provided.";
+  
+  // Use the specific customer comments, not the full raw text block
+  const customerComments = lead.lead.comments || "No comments provided.";
   
   const { customer, tradeIn, optionalQuestions, marketing } = lead.lead;
   
@@ -79,7 +81,7 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
         const result = await getAiSuggestion({
           customerName: customerName,
           vehicle: vehicleName,
-          comments: comments,
+          comments: customerComments,
         });
         setSuggestion(result);
         await onUpdate({ ...lead, suggestion: result });
@@ -134,13 +136,12 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
              )}
              <InfoLine icon={Megaphone} label="Campaign" value={marketing.primaryCampaignSource} />
              <InfoLine icon={LinkIcon} label="Click Path" value={shortenUrl(marketing.clickPathUrl)} href={marketing.clickPathUrl || undefined} />
-
         </div>
 
-        {comments && (
+        {customerComments && customerComments !== 'No comments provided.' && (
           <div className="flex items-start gap-3 text-sm">
               <MessageSquare className="mt-1 h-4 w-4 flex-shrink-0 text-muted-foreground" />
-              <p className="text-muted-foreground">{comments}</p>
+              <p className="text-muted-foreground">{customerComments}</p>
           </div>
         )}
         
