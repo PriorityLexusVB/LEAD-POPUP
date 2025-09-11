@@ -102,7 +102,7 @@ export default function LeadList() {
         <TabsTrigger value="handled">Handled ({handledLeads.length})</TabsTrigger>
       </TabsList>
       <TabsContent value="new">
-        <div className="grid gap-6 pt-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-4 pt-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {newLeads.length > 0 ? (
             newLeads.map(lead => <LeadCard key={lead.id} lead={lead} onUpdate={updateLead} />)
           ) : (
@@ -113,7 +113,7 @@ export default function LeadList() {
         </div>
       </TabsContent>
       <TabsContent value="handled">
-        <div className="grid gap-6 pt-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-4 pt-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {handledLeads.length > 0 ? (
              handledLeads.map(lead => <LeadCard key={lead.id} lead={lead} onUpdate={updateLead} />)
           ) : (

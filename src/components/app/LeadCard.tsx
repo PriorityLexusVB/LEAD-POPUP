@@ -18,13 +18,32 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle, Check, Sparkles, Car, MessageSquare, User, Mail, Phone, Home } from 'lucide-react';
+import { AlertCircle, Check, Sparkles, Car, MessageSquare, User, Mail, Phone, HelpCircle, Repeat } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+
+function InfoLine({ icon: Icon, label, value, href }: { icon: React.ElementType, label: string, value: string | null | undefined, href?: string }) {
+    if (!value) return null;
+
+    const content = href ? (
+        <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">{value}</a>
+    ) : (
+        <span>{value}</span>
+    );
+
+    return (
+        <div className="flex items-center gap-3 text-sm">
+            <Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <div className="flex-grow">
+                <span className="font-medium">{label}:</span> {content}
+            </div>
+        </div>
+    );
+}
 
 export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (lead: Lead) => Promise<void>; }) {
   const { toast } = useToast();
@@ -34,17 +53,17 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
   const [timeAgo, setTimeAgo] = useState('');
 
   useEffect(() => {
-    // The timestamp is a top-level field for easy access.
     const timestamp = lead.timestamp;
     if (timestamp) {
       setTimeAgo(formatDistanceToNow(new Date(timestamp), { addSuffix: true }));
     }
   }, [lead.timestamp]);
 
-  // Use the flattened properties for easy display.
-  const vehicleName = lead.vehicleName || "Vehicle not specified";
+  const vehicleName = lead.vehicleName || "Not specified";
   const customerName = lead.customerName || "Valued Customer";
   const comments = lead.comments || "No comments provided.";
+  
+  const { customer, interest, tradeIn, optionalQuestions } = lead.lead;
 
   const handleGenerateSuggestion = () => {
     startAiTransition(async () => {
@@ -77,14 +96,14 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
   }
 
   return (
-    <Card className={cn('flex flex-col transition-all', isHandled && 'bg-card/50 opacity-70')}>
-      <CardHeader>
+    <Card className={cn('flex flex-col transition-all text-sm', isHandled && 'bg-card/50 opacity-70')}>
+      <CardHeader className="p-4">
         <div className="flex items-start justify-between">
-            <CardTitle className="font-headline text-lg">{customerName}</CardTitle>
+            <CardTitle className="font-headline text-base">{customerName}</CardTitle>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant={isHandled ? 'secondary' : 'default'} className={cn('bg-primary', isHandled ? 'bg-card/80' : 'bg-primary')}>
+                  <Badge variant={isHandled ? 'secondary' : 'default'} className={cn(isHandled ? '' : 'bg-primary')}>
                     {isHandled ? 'Handled' : 'New'}
                   </Badge>
                 </TooltipTrigger>
@@ -94,20 +113,44 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
               </Tooltip>
             </TooltipProvider>
         </div>
-        <CardDescription className="flex items-center gap-2 pt-1 text-sm">
-          <Car className="h-4 w-4" /> <span>{vehicleName}</span>
+        <CardDescription className="flex items-center gap-2 pt-1 text-xs">
+          <Car className="h-4 w-4" /> <span>Interested in: {vehicleName}</span>
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex-grow space-y-4">
-        <div className="flex items-start gap-3 rounded-lg border bg-muted/50 p-3 text-sm">
-            <MessageSquare className="mt-1 h-4 w-4 flex-shrink-0 text-muted-foreground" />
-            <p className="text-muted-foreground">{comments}</p>
+      <CardContent className="flex-grow space-y-3 p-4 pt-0">
+        <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+             <InfoLine icon={Mail} label="Email" value={customer.email} href={`mailto:${customer.email}`} />
+             <InfoLine icon={Phone} label="Phone" value={customer.phonePretty} href={`tel:${customer.phoneDigits}`} />
+             {tradeIn && (
+                 <InfoLine icon={Repeat} label="Trade-In" value={`${tradeIn.year || ''} ${tradeIn.make || ''} ${tradeIn.model || ''}`.trim()} />
+             )}
         </div>
+
+        {comments && (
+          <div className="flex items-start gap-3 text-sm">
+              <MessageSquare className="mt-1 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+              <p className="text-muted-foreground">{comments}</p>
+          </div>
+        )}
+        
+        {optionalQuestions && optionalQuestions.length > 0 && (
+             <div className="space-y-2 pt-2">
+                {optionalQuestions.map((q, i) => (
+                    <div key={i} className="flex items-start gap-3 text-sm">
+                        <HelpCircle className="mt-1 h-4 w-4 flex-shrink-0 text-accent" />
+                        <div>
+                            <p className="font-semibold text-foreground">{q.question}</p>
+                            <p className="text-muted-foreground">{q.response || q.check}</p>
+                        </div>
+                    </div>
+                ))}
+             </div>
+        )}
 
         {(isAiLoading || suggestion) && (
             <Accordion type="single" collapsible defaultValue={suggestion ? 'item-1' : undefined} className="w-full">
                 <AccordionItem value="item-1">
-                <AccordionTrigger className="text-sm font-semibold text-primary">
+                <AccordionTrigger className="text-xs font-semibold text-primary">
                     AI Reply Suggestion
                 </AccordionTrigger>
                 <AccordionContent>
@@ -118,14 +161,14 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
                         <Skeleton className="h-4 w-[90%]" />
                     </div>
                     ) : (
-                    <p className="whitespace-pre-wrap text-sm text-foreground/80">{suggestion}</p>
+                    <p className="whitespace-pre-wrap text-xs text-foreground/80">{suggestion}</p>
                     )}
                 </AccordionContent>
                 </AccordionItem>
             </Accordion>
         )}
       </CardContent>
-      <CardFooter className="flex flex-col items-stretch gap-2 pt-4 sm:flex-row sm:justify-end">
+      <CardFooter className="flex flex-col items-stretch gap-2 p-4 pt-2 sm:flex-row sm:justify-end">
         {!suggestion && !isHandled && (
           <Button onClick={handleGenerateSuggestion} disabled={isAiLoading} size="sm" className="w-full bg-accent text-accent-foreground hover:bg-accent/90 sm:w-auto">
             <Sparkles className="mr-2 h-4 w-4" />
