@@ -116,83 +116,6 @@ function decodeHtmlEntities(s) {
     .replace(/&apos;/gi, "'");
 }
 
-function parseKeyValsFromCdata(text) {
-  const out = {};
-  const s = toStr(text).replace(/\r/g, '');
-  const lines = s.split('\n').flatMap(function (line) {
-    const parts = [];
-    let cursor = 0;
-    const regex = /, (?=[A-Z][a-zA-Z ]+:)/g;
-    let m;
-    while ((m = regex.exec(line))) {
-      parts.push(line.slice(cursor, m.index));
-      cursor = m.index + 2;
-    }
-    parts.push(line.slice(cursor));
-    return parts;
-  });
-  for (let i = 0; i < lines.length; i++) {
-    const L = lines[i];
-    const m = L.match(/\s*([^:]+):\s*(.+)$/);
-    if (m) out[m[1].trim()] = m[2].trim();
-  }
-  return out;
-}
-
-function parsePreferredContactFromCdata(text) {
-  const m = toStr(text).match(/Preferred Contact Method:\s*([a-z]+)\b/i);
-  return m ? m[1].toLowerCase() : null;
-}
-
-function parseOptionalQuestionsFromCdata(text) {
-  const arr = [];
-  const s = toStr(text).replace(/\r/g, '');
-  const re = /Question:\s*(.+?)\s+Check:\s*([^\n,]+)(?:,\s*Response:\s*([^\n]+))?/gi;
-  let m;
-  while ((m = re.exec(s))) {
-    arr.push({
-      question: m[1].trim(),
-      check: (m[2] || '').trim(),
-      response: (m[3] || '').trim() || null
-    });
-  }
-  return arr;
-}
-
-function parseCampaignBitsFromCdata(text) {
-  const kv = parseKeyValsFromCdata(text);
-  function pick(name) {
-    const key = Object.keys(kv).find(k => k.toLowerCase() === name.toLowerCase());
-    return key ? kv[key] : null;
-  }
-  const clickPathUrl = pick('Click Path');
-  const utm = {};
-  try {
-    const url = new URL(clickPathUrl);
-    const p = url.searchParams;
-    utm.source   = p.get('utm_source')   || null;
-    utm.medium   = p.get('utm_medium')   || null;
-    utm.campaign = p.get('utm_campaign') || null;
-    utm.term     = p.get('utm_term')     || null;
-    utm.content  = p.get('utm_content')  || null;
-  } catch (_e) {}
-  return {
-    clickPathUrl,
-    primaryCampaignSource: pick('Primary PPC Campaign Source'),
-    adwordsClickId: pick('Adwords Click Id') || pick('AdWords Click Id') || pick('GCLID') || null,
-    networkType: pick('Network Type'),
-    eventDatetimeUtc: pick('Datetime') || pick('Date Time') || null,
-    country: pick('Country'),
-    doors: pick('Doors'),
-    bodystyle: pick('Bodystyle'),
-    transmission: pick('Transmission'),
-    condition: pick('Condition'),
-    price: pick('Price'),
-    _rawPairs: kv,
-    utm
-  };
-}
-
 async function getAdfXml(parsed, rfc822) {
   // 1) attachments
   if (Array.isArray(parsed.attachments)) {
@@ -282,9 +205,6 @@ function normalizeAdf(adfObj) {
   const buy   = vehicles.find(v => v && v.interest === 'buy')      || null;
 
   const cdataText = (p.customer && p.customer.comments) || null;
-  const preferred = parsePreferredContactFromCdata(cdataText);
-  const optionalQuestions = parseOptionalQuestionsFromCdata(cdataText);
-  const campaign = parseCampaignBitsFromCdata(cdataText);
 
   const tradeIn = trade ? {
     status: toStr(trade.status) || null,
@@ -304,9 +224,9 @@ function normalizeAdf(adfObj) {
     trim: toStr(buy.trim) || null,
     vin: toStr(buy.vin) || null,
     stock: toStr(buy.stock) || null,
-    bodystyle: toStr(buy.bodystyle) || toStr(campaign.bodystyle) || null,
-    transmission: toStr(buy.transmission) || toStr(campaign.transmission) || null,
-    price: toNum(buy.price != null ? buy.price : campaign.price),
+    bodystyle: toStr(buy.bodystyle) || null,
+    transmission: toStr(buy.transmission) || null,
+    price: toNum(buy.price),
     odometer: toNum(buy.odometer)
   } : null;
 
@@ -342,25 +262,11 @@ function normalizeAdf(adfObj) {
       phoneDigits,
       phonePretty: phonePrettyVal,
       zip,
-      preferredContactMethod: preferred // 'email' | 'phone' | 'text' | null
     },
     tradeIn,
     interest,
-    marketing: {
-      clickPathUrl: campaign.clickPathUrl,
-      primaryCampaignSource: campaign.primaryCampaignSource,
-      adwordsClickId: campaign.adwordsClickId,
-      networkType: campaign.networkType,
-      eventDatetimeUtc: campaign.eventDatetimeUtc,
-      country: campaign.country,
-      utm: campaign.utm,
-      doors: campaign.doors ? toNum(campaign.doors) : null,
-      bodystyle: campaign.bodystyle || (interest && interest.bodystyle) || null,
-      transmission: campaign.transmission || (interest && interest.transmission) || null,
-      condition: campaign.condition || null,
-      _allParsedPairs: campaign._rawPairs
-    },
-    optionalQuestions,
+    marketing: {},
+    optionalQuestions: [],
     validation
   };
 }
@@ -381,7 +287,6 @@ const LeadSchema = z.object({
     phoneDigits: z.string().length(10).nullable(),
     phonePretty: z.string().nullable(),
     zip: z.string().regex(/^\d{5}(-\d{4})?$/).nullable(),
-    preferredContactMethod: z.enum(['email','phone','text']).nullable().optional()
   }),
   tradeIn: z.object({
     status: z.string().nullable(),
@@ -405,31 +310,6 @@ const LeadSchema = z.object({
     price: z.number().nullable(),
     odometer: z.number().int().nullable()
   }).nullable(),
-  marketing: z.object({
-    clickPathUrl: z.string().nullable(),
-    primaryCampaignSource: z.string().nullable(),
-    adwordsClickId: z.string().nullable(),
-    networkType: z.string().nullable(),
-    eventDatetimeUtc: z.string().nullable(),
-    country: z.string().nullable(),
-    utm: z.object({
-      source: z.string().nullable().optional(),
-      medium: z.string().nullable().optional(),
-      campaign: z.string().nullable().optional(),
-      term: z.string().nullable().optional(),
-      content: z.string().nullable().optional()
-    }).optional(),
-    doors: z.number().int().nullable(),
-    bodystyle: z.string().nullable(),
-    transmission: z.string().nullable(),
-    condition: z.string().nullable(),
-    _allParsedPairs: z.record(z.string()).optional()
-  }),
-  optionalQuestions: z.array(z.object({
-    question: z.string(),
-    check: z.string().optional(),
-    response: z.string().nullable().optional()
-  })).optional(),
   validation: z.object({
     hasEmailOrPhone: z.boolean(),
     emailLooksValid: z.boolean().nullable(),

@@ -16,6 +16,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Mail, Phone, CarFront, Link2, Clock, Sparkles, Check, AlertCircle, ExternalLink } from "lucide-react";
 import { IconTextRow } from "./IconTextRow";
 import { Section } from "./Section";
+import { PrevOwnerBadges } from "./PrevOwnerBadges";
 
 type Props = {
   lead: Lead;
@@ -148,38 +149,25 @@ export default function LeadCard({ lead, onUpdate }: Props) {
 
         {/* 3) VEHICLE OF INTEREST (headline + details) */}
         {(lead.vehicleOfInterest || lead.vehicle) && (
-          <Section title="Vehicle of Interest">
-            {lead.vehicleOfInterest && (
-              <IconTextRow icon={<CarFront className="h-4 w-4" aria-hidden />}>
-                <span className="font-medium">{lead.vehicleOfInterest}</span>
-              </IconTextRow>
-            )}
-
-            {lead.vehicle ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 pt-2 text-sm text-muted-foreground">
-                {lead.vehicle.year || lead.vehicle.make || lead.vehicle.model ? (
-                  <div><span className="font-medium text-foreground">Model:</span> {[
-                    lead.vehicle.year, lead.vehicle.make, lead.vehicle.model, lead.vehicle.trim
-                  ].filter(Boolean).join(" ")}</div>
-                ) : null}
-                {lead.vehicle.price ? (
-                  <div><span className="font-medium text-foreground">Price:</span> {lead.vehicle.price}</div>
-                ) : null}
-                {lead.vehicle.stock ? (
-                  <div><span className="font-medium text-foreground">Stock #:</span> {lead.vehicle.stock}</div>
-                ) : null}
-                {lead.vehicle.vin ? (
-                  <div><span className="font-medium text-foreground">VIN:</span> {lead.vehicle.vin}</div>
-                ) : null}
-                {lead.vehicle.exteriorColor ? (
-                  <div><span className="font-medium text-foreground">Ext. Color:</span> {lead.vehicle.exteriorColor}</div>
-                ) : null}
-                {lead.vehicle.interiorColor ? (
-                  <div><span className="font-medium text-foreground">Int. Color:</span> {lead.vehicle.interiorColor}</div>
-                ) : null}
-              </div>
-            ) : null}
-          </Section>
+           <Section title="Vehicle of Interest">
+           {lead.vehicleOfInterest && <div className="text-sm font-medium">{lead.vehicleOfInterest}</div>}
+           <PrevOwnerBadges prevToyota={lead.previousToyotaCustomer} prevLexus={lead.previousLexusCustomer} />
+           {lead.vehicle ? (
+             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-muted-foreground mt-2">
+               {lead.vehicle.year || lead.vehicle.make || lead.vehicle.model ? (
+                 <div><span className="font-medium text-foreground">Model:</span> {[
+                   lead.vehicle.year, lead.vehicle.make, lead.vehicle.model, lead.vehicle.trim
+                 ].filter(Boolean).join(" ")}</div>
+               ) : null}
+               {lead.vehicle.price && <div><span className="font-medium text-foreground">Price:</span> {lead.vehicle.price}</div>}
+               {lead.vehicle.odometer && <div><span className="font-medium text-foreground">Odometer:</span> {lead.vehicle.odometer}</div>}
+               {lead.vehicle.stock && <div><span className="font-medium text-foreground">Stock #:</span> {lead.vehicle.stock}</div>}
+               {lead.vehicle.vin && <div><span className="font-medium text-foreground">VIN:</span> {lead.vehicle.vin}</div>}
+               {lead.vehicle.exteriorColor && <div><span className="font-medium text-foreground">Ext. Color:</span> {lead.vehicle.exteriorColor}</div>}
+               {lead.vehicle.interiorColor && <div><span className="font-medium text-foreground">Int. Color:</span> {lead.vehicle.interiorColor}</div>}
+             </div>
+           ) : null}
+         </Section>
         )}
 
         {/* 4) TRADE (if present) */}
@@ -193,6 +181,20 @@ export default function LeadCard({ lead, onUpdate }: Props) {
             </div>
           </Section>
         )}
+
+         {/* 5) Form Details (QA) */}
+         {lead.qa?.length ? (
+          <Section title="Form Details">
+            <div className="space-y-2">
+              {lead.qa.map((row, idx) => (
+                <div key={idx} className="rounded-lg border border-border/60 p-2.5">
+                  <div className="text-xs font-semibold">{row.question}</div>
+                  <div className="text-sm text-muted-foreground leading-6">{row.answer}</div>
+                </div>
+              ))}
+            </div>
+          </Section>
+        ) : null}
         
         {/* AI Suggestion */}
         {(isAiLoading || lead.suggestion) && (

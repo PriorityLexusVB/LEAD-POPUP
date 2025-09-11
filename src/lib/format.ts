@@ -1,51 +1,34 @@
-
 import { format, formatDistanceToNow } from "date-fns";
-import type { Lead, TradeIn } from "@/types/lead";
 
 export function relativeTimeWithExact(dateLike: string | number | Date) {
-  if (!dateLike) {
-    return { relative: "some time ago", exact: "Unknown time" };
-  }
-  const date = typeof dateLike === "string" || typeof dateLike === "number" ? new Date(dateLike) : dateLike;
-  try {
-    return {
-      relative: formatDistanceToNow(date, { addSuffix: true }),
-      exact: format(date, "PPpp"),
-    };
-  } catch {
-    return { relative: "invalid date", exact: "Invalid Date" };
-  }
+  const d = new Date(dateLike);
+  return { relative: formatDistanceToNow(d, { addSuffix: true }), exact: format(d, "PPpp") };
 }
 
 export function displayUrlLabel(fullUrl?: string) {
   if (!fullUrl) return "";
   try {
-    const u = new URL(fullUrl);
-    const path = u.pathname === "/" ? "" : u.pathname;
-    const shortPath = path.length > 24 ? path.slice(0, 21) + "…" : path;
+    const u = new URL(fullUrl.startsWith("http") ? fullUrl : `https://${fullUrl}`);
     const host = u.host.replace(/^www\./, "");
-    return `${host}${shortPath ? ` · ${shortPath}` : ""}`;
-  } catch {
-    return fullUrl; // fallback if it wasn’t a valid URL
-  }
+    const path = u.pathname === "/" ? "" : u.pathname;
+    const short = path.length > 24 ? path.slice(0, 21) + "…" : path;
+    return `${host}${short ? ` · ${short}` : ""}`;
+  } catch { return fullUrl; }
 }
 
-export function compactTradeIn(t?: TradeIn) {
+export function compactTradeIn(t?: { year?: number; make?: string; model?: string }) {
   if (!t) return "";
-  const bits = [t.year, t.make, t.model].filter(Boolean);
-  return bits.join(" ");
+  return [t.year, t.make, t.model].filter(Boolean).join(" ");
+}
+
+export function nonEmpty<T>(arr?: (T|null|undefined)[]) {
+  return (arr ?? []).filter(Boolean) as T[];
 }
 
 export function buildCdkUrl(lead: { cdkUrl?: string; cdkLeadId?: string }) {
   if (lead.cdkUrl) return lead.cdkUrl;
   if (lead.cdkLeadId) {
-    // set this to your real base in .env
-    const base = process.env.NEXT_PUBLIC_CDK_BASE_URL?.replace(/\/+$/, "");
-    if (base) return `${base}/evo2/fresh/leads/view.aspx?leadid=${encodeURIComponent(lead.cdkLeadId)}`;
+    const base = (process.env.NEXT_PUBLIC_CDK_BASE_URL ?? "https://cdk.eleadcrm.com").replace(/\/+$/, "");
+    return `${base}/evo2/fresh/leads/view.aspx?leadid=${encodeURIComponent(lead.cdkLeadId)}`;
   }
-  return undefined;
-}
-
-export function nonEmpty<T>(arr?: (T | undefined | null)[]) {
-  return (arr ?? []).filter(Boolean) as T[];
 }

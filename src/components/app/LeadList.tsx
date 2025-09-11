@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { type Lead, type LeadStatus, type VehicleDetails, type TradeIn } from "@/types/lead";
+import { type Lead, type LeadStatus, type VehicleDetails, type TradeIn, QA } from "@/types/lead";
 import type { RawFirestoreLead } from '@/lib/types';
 import LeadCard from './LeadCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -15,10 +15,11 @@ function normalizeFirestoreLead(doc: DocumentData): Lead {
     const data = doc.data() as RawFirestoreLead;
     const leadData = data.lead;
 
-    const clickPaths = [
+    const narrative = leadData.comments?.trim() || undefined;
+
+    const clickPaths: string[] = Array.from(new Set([
         leadData.marketing.clickPathUrl,
-        (leadData.comments || '').includes('Return Shopper') ? leadData.marketing.clickPathUrl : undefined,
-    ].filter(Boolean) as string[];
+    ].filter(Boolean))) as string[];
 
     const vehicle: VehicleDetails = {
         year: leadData.interest?.year || undefined,
@@ -28,8 +29,7 @@ function normalizeFirestoreLead(doc: DocumentData): Lead {
         vin: leadData.interest?.vin || undefined,
         stock: leadData.interest?.stock || undefined,
         price: leadData.interest?.price ? `$${leadData.interest.price.toLocaleString()}`: undefined,
-        exteriorColor: (leadData.interest as any)?.color, // Not a standard field, but check just in case
-        interiorColor: (leadData.interest as any)?.interiorColor, // Not a standard field
+        odometer: leadData.interest?.odometer ? leadData.interest.odometer.toLocaleString() : undefined,
     };
     
     const tradeIn: TradeIn | undefined = leadData.tradeIn ? {
@@ -41,6 +41,15 @@ function normalizeFirestoreLead(doc: DocumentData): Lead {
         mileage: leadData.tradeIn.odometer ? leadData.tradeIn.odometer.toLocaleString() : undefined,
     } : undefined;
 
+    const qa: QA[] = leadData.optionalQuestions?.map(q => ({
+        question: q.question,
+        answer: q.response || q.check || 'Not provided',
+    })) || [];
+
+    const lowerNarrative = (narrative || '').toLowerCase();
+    const previousToyotaCustomer = lowerNarrative.includes('previous toyota customer');
+    const previousLexusCustomer = lowerNarrative.includes('previous lexus customer');
+
     return {
         id: doc.id,
         createdAt: data.receivedAt ? new Date(data.receivedAt.seconds * 1000) : new Date(data.timestamp),
@@ -48,13 +57,17 @@ function normalizeFirestoreLead(doc: DocumentData): Lead {
         suggestion: data.suggestion,
         customerName: data.customerName,
         
-        narrative: leadData.comments?.trim() || undefined,
-        
+        narrative,
         clickPathUrls: clickPaths,
         
         vehicleOfInterest: data.vehicleName,
         vehicle,
         tradeIn,
+        
+        previousLexusCustomer,
+        previousToyotaCustomer,
+
+        qa,
 
         email: leadData.customer.email || undefined,
         phone: leadData.customer.phonePretty || undefined,
