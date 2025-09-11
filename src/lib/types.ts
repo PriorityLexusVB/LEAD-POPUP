@@ -1,7 +1,10 @@
+
+// This type represents the raw, nested structure of the lead document
+// as it is stored in Firestore. We convert this to the flatter `Lead`
+// type from `src/types/lead.ts` for easier use in the UI.
+
 export type LeadStatus = 'new' | 'handled';
 
-// This is the fully structured, Zod-validated lead object.
-// It exists inside the `lead` property of the top-level Firestore document.
 export type StructuredLead = {
   status: LeadStatus;
   suggestion?: string;
@@ -91,11 +94,9 @@ export type StructuredLead = {
   };
 };
 
-
 // This is the top-level type for the document stored in Firestore.
-// It includes the flattened fields for easy UI display, plus the full structured lead.
-export type Lead = {
-  id: string; // The Firestore document ID
+export type RawFirestoreLead = {
+  id: string;
   status: LeadStatus;
   suggestion?: string;
   comments: string | null;
