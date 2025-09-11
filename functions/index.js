@@ -2,12 +2,25 @@
 // Parses ADF/XML from attachments, decoded HTML, text, or raw RFC822.
 // Validates with Zod, dedupes, archives (optional), and writes to Firestore.
 
-const { onRequest } = require('firebase-functions/v2/onRequest');
-const logger = require('firebase-functions/logger');
+// ---- Import (works with or without v2 installed) ----
+let onRequest;
+let usingV2 = false;
+try {
+  // Preferred: Firebase Functions Gen-2
+  ({ onRequest } = require('firebase-functions/v2/https'));
+  usingV2 = true;
+} catch (_e) {
+  // Fallback: Gen-1 style (no options object)
+  const functions = require('firebase-functions');
+  onRequest = (opts, handler) => functions.https.onRequest(handler);
+}
+
+const logger = require('firebase-functions/logger'); // safe even on older versions
 const admin = require('firebase-admin');
 const { simpleParser } = require('mailparser');
 const { XMLParser } = require('fast-xml-parser');
 const { z } = require('zod');
+
 
 // ---- Init ----
 admin.initializeApp();
@@ -19,6 +32,13 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2MB
 const DEDUPE_COLL    = process.env.DEDUPE_COLL    || 'email_ingest';
 const LEADS_COLL     = process.env.LEADS_COLL     || 'email_leads';
 const ARCHIVE_BUCKET = process.env.ARCHIVE_BUCKET || ''; // optional GCS bucket name
+
+const FN_OPTS = {
+  region: 'us-central1',
+  secrets: ['GMAIL_WEBHOOK_SECRET'],
+  memory: '256MiB',
+  timeoutSeconds: 120,
+};
 
 // ---- Helpers (robust string/number/zip/phone) ----
 function toStr(x) {
@@ -309,7 +329,7 @@ function normalizeAdf(adfObj) {
     vehicleName: [interest && interest.year, interest && interest.make, interest && interest.model].filter(Boolean).join(' '),
 
     meta: {
-      adfId: adfId,
+      adfId: toStr(adfId),
       requestDate: p.requestdate || null,
       vendorName: p.vendor && p.vendor.vendorname || null,
       providerName: p.provider && (p.provider.name && (p.provider.name['#text'] || p.provider.name)) || null,
@@ -453,16 +473,7 @@ async function saveLeadDoc(docId, payload) {
   await ref.set(payload, { merge: true });
 }
 
-// ---- Function (Firebase v2) ----
-exports.receiveEmailLead = onRequest(
-  {
-    region: 'us-central1',
-    secrets: ['GMAIL_WEBHOOK_SECRET'], // set via: firebase functions:secrets:set GMAIL_WEBHOOK_SECRET
-    minInstances: 1,
-    memory: '512MiB',
-    timeoutSeconds: 120,
-  },
-  async (req, res) => {
+exports.receiveEmailLeadV2 = onRequest(FN_OPTS, async (req, res) => {
     // Breadcrumbs
     logger.info('receiveEmailLead: started cl=' + toStr(req.get('content-length')) + ' ct=' + toStr(req.get('content-type')) + ' xmid=' + toStr(req.get('X-Gmail-Message-Id')));
 
@@ -560,132 +571,7 @@ exports.receiveEmailLead = onRequest(
         await saveLeadDoc(mk.docId, savePayload);
       }
 
-      logger.info('Saved lead adfId=' + toStr(leadData.meta.adfId) + ' messageId=' + toStr(messageId) + ' duplicate=' + String(mk.isDuplicate));
-      return res.status(200).json({ ok: true, duplicate: mk.isDuplicate, dedupeKey: mk.docId, messageId });
-    } catch (err) {
-      const msg = (err && err.message) ? String(err.message) : String(err);
-      const stack = (err && err.stack) ? String(err.stack) : '';
-      logger.error('receiveEmailLead_uncaught: ' + msg + ' stack=' + stack);
-      try {
-        const rawStr =
-          (typeof req.body === 'string') ? req.body :
-          (Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : '');
-        const msgId = req.get('X-Gmail-Message-Id') || ('error-' + Date.now());
-        await archiveToGcs({ messageId: msgId, rfc822: rawStr });
-      } catch (archiveErr) {
-        logger.error('archive_on_uncaught_failed: ' + String((archiveErr && archiveErr.message) || archiveErr));
-      }
-      return res.status(500).json({ ok: false, error: 'internal_error' });
-    }
-  }
-);
-exports.receiveEmailLeadV2 = onRequest(
-  {
-    region: 'us-central1',
-    secrets: ['GMAIL_WEBHOOK_SECRET'], // set via: firebase functions:secrets:set GMAIL_WEBHOOK_SECRET
-    // minInstances: 0 by default (no monthly floor)
-    memory: '256MiB',
-    timeoutSeconds: 120,
-  },
-  async (req, res) => {
-    // Breadcrumbs
-    logger.info('receiveEmailLead: started cl=' + toStr(req.get('content-length')) + ' ct=' + toStr(req.get('content-type')) + ' xmid=' + toStr(req.get('X-Gmail-Message-Id')));
-
-    try {
-      // Auth
-      const providedSecret = req.get('X-Webhook-Secret');
-      const expectedSecret = process.env.GMAIL_WEBHOOK_SECRET;
-      if (providedSecret !== expectedSecret) {
-        logger.warn('unauthorized webhook attempt');
-        return res.status(401).json({ ok: false, error: 'unauthorized' });
-      }
-
-      // Size guard
-      const contentLength = Number(req.get('content-length') || '0');
-      if (contentLength > MAX_BODY_BYTES) {
-        return res.status(413).json({ ok: false, error: 'payload_too_large', bytes: contentLength });
-      }
-
-      // Read body
-      const rawBodyStr =
-        (typeof req.body === 'string') ? req.body :
-        (Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : '');
-
-      if (!rawBodyStr) {
-        return res.status(400).json({ ok: false, error: 'missing_body' });
-      }
-
-      logger.info('receiveEmailLead: body ready len=' + rawBodyStr.length);
-
-      // decode base64url RFC822 (Apps Script sends RAW)
-      const rfc822 = base64UrlToUtf8(rawBodyStr);
-
-      // Parse email
-      let parsed;
-      try {
-        parsed = await simpleParser(rfc822);
-      } catch (e) {
-        logger.error('mailparser_failed: ' + toStr(e && e.message));
-        return res.status(400).json({ ok:false, error:'mailparser_failed', details: toStr(e && e.message) });
-      }
-
-      const messageId = toStr(parsed.messageId) || toStr(req.get('X-Gmail-Message-Id')) || null;
-
-      // Extract ADF
-      let adfXml = await getAdfXml(parsed, rfc822);
-      if (!adfXml) {
-        logger.warn('adf_not_found: msgId=' + toStr(messageId) + ' subject=' + toStr(parsed.subject) + ' from=' + toStr(parsed.from && parsed.from.text));
-        try { await archiveToGcs({ messageId, rfc822 }); } catch (ae) { logger.error('archive_raw_failed_on_non_lead: ' + toStr(ae && ae.message)); }
-        return res.status(200).json({ ok:true, outcome:'not_a_lead_email' });
-      }
-
-      adfXml = sanitizeXml(adfXml);
-
-      // XML parse
-      let adfObj;
-      try {
-        const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '', allowBooleanAttributes: true });
-        adfObj = parser.parse(adfXml);
-      } catch (e) {
-        logger.error('xml_parse_failed: ' + toStr(e && e.message));
-        try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) { logger.error('archive_xml_failed: ' + toStr(ae && ae.message)); }
-        return res.status(400).json({ ok:false, error:'xml_parse_failed', details: toStr(e && e.message) });
-      }
-
-      // Normalize + validate
-      const leadData = normalizeAdf(adfObj);
-      const zres = LeadSchema.safeParse(leadData);
-      if (!zres.success) {
-        try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) { logger.error('archive_on_schema_fail: ' + toStr(ae && ae.message)); }
-        await db.collection('email_leads_invalid').add({
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          messageId: messageId,
-          subject: toStr(parsed.subject) || null,
-          errors: zres.error.flatten()
-        });
-        return res.status(422).json({ ok:false, error:'schema_validation_failed', details: zres.error.flatten() });
-      }
-
-      // De-dupe key + archive
-      const mk = await markProcessedIfNew(messageId, leadData.meta.adfId);
-      try { await archiveToGcs({ messageId, rfc822, adfXml }); } catch (ae) { logger.error('archive_ok_failed: ' + toStr(ae && ae.message)); }
-
-      // Persist (only once)
-      if (!mk.isDuplicate) {
-        const savePayload = {
-          ...leadData,
-          lead: leadData,
-          ingest: {
-            receivedAt: new Date().toISOString(),
-            from: toStr(parsed.from && parsed.from.text) || null,
-            to: toStr(parsed.to && parsed.to.text) || null,
-            source: 'gmail-webhook-v2'
-          }
-        };
-        await saveLeadDoc(mk.docId, savePayload);
-      }
-
-      logger.info('Saved lead adfId=' + toStr(leadData.meta.adfId) + ' messageId=' + toStr(messageId) + ' duplicate=' + String(mk.isDuplicate));
+      logger.info('Saved lead adfId=' + toStr(leadData.meta.adfid) + ' messageId=' + toStr(messageId) + ' duplicate=' + String(mk.isDuplicate));
       return res.status(200).json({ ok: true, duplicate: mk.isDuplicate, dedupeKey: mk.docId, messageId });
     } catch (err) {
       const msg = (err && err.message) ? String(err.message) : String(err);
