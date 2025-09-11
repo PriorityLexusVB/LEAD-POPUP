@@ -247,3 +247,5 @@ export default function LeadCard({ lead, onUpdate }: Props) {
     </Card>
   );
 }
+
+    
