@@ -1,15 +1,25 @@
 
 export type LeadStatus = "new" | "handled";
 
-export type LeadQA = {
-  question: string;
-  answer: string;
+export type VehicleDetails = {
+  year?: number;
+  make?: string;
+  model?: string;
+  trim?: string;
+  stock?: string;
+  vin?: string;
+  price?: string | number;
+  exteriorColor?: string;
+  interiorColor?: string;
 };
 
 export type TradeIn = {
   year?: number;
   make?: string;
   model?: string;
+  trim?: string;
+  vin?: string;
+  mileage?: string | number;
 };
 
 // This is the primary, flattened Lead object for UI use.
@@ -21,26 +31,26 @@ export type Lead = {
 
   // Header
   customerName: string;
-  vehicleOfInterest?: string;
-
-  // Primary box
-  email?: string;
-  phone?: string;
-  tradeIn?: TradeIn;
-  campaignSource?: string; // e.g., "Google Ads"
-  clickPathUrl?: string;   // full URL (we’ll display a shortened label)
-  returnShopperUrl?: string;
-
-  // Narrative (customer free-form comment only)
+  
+  // message + ordering targets
   narrative?: string;
 
-  // Structured Q&A (from webforms etc.)
-  qa?: LeadQA[];
+  // links (rendered as short labels)
+  clickPathUrls?: string[];
+
+  // vehicle / trade
+  vehicleOfInterest?: string;    // simple headline (“2021 Toyota 4Runner”)
+  vehicle?: VehicleDetails;      // structured details shown under the VOI section
+  tradeIn?: TradeIn;
+
+  // contact
+  email?: string;
+  phone?: string;
+  
+  // Raw suggestion for the AI button
+  suggestion?: string;
 
   // CDK Integration
   cdkUrl?: string;     // full deep link if you have it
   cdkLeadId?: string;  // or just the lead id (we’ll build URL from env)
-
-  // Raw suggestion for the AI button
-  suggestion?: string;
 };

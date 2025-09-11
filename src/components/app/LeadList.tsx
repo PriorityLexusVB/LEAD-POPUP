@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { type Lead, type LeadStatus, type LeadQA } from "@/types/lead";
+import { type Lead, type LeadStatus, type VehicleDetails, type TradeIn } from "@/types/lead";
 import type { RawFirestoreLead } from '@/lib/types';
 import LeadCard from './LeadCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -15,13 +15,31 @@ function normalizeFirestoreLead(doc: DocumentData): Lead {
     const data = doc.data() as RawFirestoreLead;
     const leadData = data.lead;
 
-    const qa: LeadQA[] = leadData.optionalQuestions?.map(q => ({
-        question: q.question,
-        answer: q.response || q.check || "Not answered",
-    })) || [];
+    const clickPaths = [
+        leadData.marketing.clickPathUrl,
+        (leadData.comments || '').includes('Return Shopper') ? leadData.marketing.clickPathUrl : undefined,
+    ].filter(Boolean) as string[];
+
+    const vehicle: VehicleDetails = {
+        year: leadData.interest?.year || undefined,
+        make: leadData.interest?.make || undefined,
+        model: leadData.interest?.model || undefined,
+        trim: leadData.interest?.trim || undefined,
+        vin: leadData.interest?.vin || undefined,
+        stock: leadData.interest?.stock || undefined,
+        price: leadData.interest?.price ? `$${leadData.interest.price.toLocaleString()}`: undefined,
+        exteriorColor: (leadData.interest as any)?.color, // Not a standard field, but check just in case
+        interiorColor: (leadData.interest as any)?.interiorColor, // Not a standard field
+    };
     
-    // In a real scenario, you would parse this from the raw comments or another field.
-    const returnShopperUrl = (leadData.comments || '').includes('Return Shopper') ? leadData.marketing.clickPathUrl : undefined;
+    const tradeIn: TradeIn | undefined = leadData.tradeIn ? {
+        year: leadData.tradeIn.year || undefined,
+        make: leadData.tradeIn.make || undefined,
+        model: leadData.tradeIn.model || undefined,
+        trim: leadData.tradeIn.trim || undefined,
+        vin: (leadData.tradeIn as any).vin, // Not a standard field
+        mileage: leadData.tradeIn.odometer ? leadData.tradeIn.odometer.toLocaleString() : undefined,
+    } : undefined;
 
     return {
         id: doc.id,
@@ -29,20 +47,19 @@ function normalizeFirestoreLead(doc: DocumentData): Lead {
         status: data.status,
         suggestion: data.suggestion,
         customerName: data.customerName,
+        
+        narrative: leadData.comments?.trim() || undefined,
+        
+        clickPathUrls: clickPaths,
+        
         vehicleOfInterest: data.vehicleName,
+        vehicle,
+        tradeIn,
+
         email: leadData.customer.email || undefined,
         phone: leadData.customer.phonePretty || undefined,
-        tradeIn: leadData.tradeIn ? {
-            year: leadData.tradeIn.year || undefined,
-            make: leadData.tradeIn.make || undefined,
-            model: leadData.tradeIn.model || undefined,
-        } : undefined,
-        campaignSource: leadData.marketing.primaryCampaignSource || undefined,
-        clickPathUrl: leadData.marketing.clickPathUrl || undefined,
-        returnShopperUrl: returnShopperUrl,
-        narrative: leadData.comments || undefined,
-        qa: qa,
-        cdkLeadId: leadData.meta.adfId, // Assuming adfId can be used as cdkLeadId
+        
+        cdkLeadId: leadData.meta.adfId,
     };
 }
 

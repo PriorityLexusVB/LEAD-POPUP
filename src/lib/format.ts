@@ -1,6 +1,6 @@
 
 import { format, formatDistanceToNow } from "date-fns";
-import type { Lead } from "@/types/lead";
+import type { Lead, TradeIn } from "@/types/lead";
 
 export function relativeTimeWithExact(dateLike: string | number | Date) {
   if (!dateLike) {
@@ -30,7 +30,7 @@ export function displayUrlLabel(fullUrl?: string) {
   }
 }
 
-export function compactTradeIn(t?: { year?: number; make?: string; model?: string }) {
+export function compactTradeIn(t?: TradeIn) {
   if (!t) return "";
   const bits = [t.year, t.make, t.model].filter(Boolean);
   return bits.join(" ");
@@ -44,4 +44,8 @@ export function buildCdkUrl(lead: { cdkUrl?: string; cdkLeadId?: string }) {
     if (base) return `${base}/evo2/fresh/leads/view.aspx?leadid=${encodeURIComponent(lead.cdkLeadId)}`;
   }
   return undefined;
+}
+
+export function nonEmpty<T>(arr?: (T | undefined | null)[]) {
+  return (arr ?? []).filter(Boolean) as T[];
 }

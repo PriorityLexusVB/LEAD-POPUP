@@ -1,8 +1,7 @@
-
 "use client";
 
 import { type Lead, type LeadStatus } from "@/types/lead";
-import { relativeTimeWithExact, displayUrlLabel, compactTradeIn, buildCdkUrl } from "@/lib/format";
+import { relativeTimeWithExact, displayUrlLabel, compactTradeIn, buildCdkUrl, nonEmpty } from "@/lib/format";
 import { useTransition } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { getAiSuggestion } from "@/app/actions";
@@ -10,16 +9,13 @@ import { getAiSuggestion } from "@/app/actions";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
-import { Mail, Phone, CarFront, MessageSquareText, Link2, Clock, Sparkles, Check, AlertCircle, ExternalLink, Repeat } from "lucide-react";
+import { Mail, Phone, CarFront, Link2, Clock, Sparkles, Check, AlertCircle, ExternalLink } from "lucide-react";
 import { IconTextRow } from "./IconTextRow";
-import Link from "next/link";
 import { Section } from "./Section";
-
 
 type Props = {
   lead: Lead;
@@ -67,12 +63,12 @@ export default function LeadCard({ lead, onUpdate }: Props) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="text-base font-semibold leading-6 truncate">{lead.customerName}</h3>
-            {lead.vehicleOfInterest ? (
+            {lead.vehicleOfInterest && (
               <div className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
                 <CarFront className="h-4 w-4" aria-hidden />
                 <span className="truncate">{lead.vehicleOfInterest}</span>
               </div>
-            ) : null}
+            )}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -97,8 +93,9 @@ export default function LeadCard({ lead, onUpdate }: Props) {
         </div>
       </CardHeader>
 
-      <CardContent className="pt-0 space-y-5">
-        {/* ===== 1) Contact & Source (primary) ===== */}
+      <CardContent className="pt-0 space-y-6">
+
+        {/* Contact & Source with CDK button (kept concise) */}
         <div className="rounded-xl border border-border/70 bg-muted/30 p-3 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-medium text-muted-foreground">Contact & Source</div>
@@ -106,19 +103,14 @@ export default function LeadCard({ lead, onUpdate }: Props) {
               const url = buildCdkUrl(lead);
               if (!url) return null;
               return (
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-border/70 hover:bg-accent transition"
-                >
+                <a href={url} target="_blank" rel="noreferrer"
+                   className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-border/70 hover:bg-accent transition">
                   Open in CDK <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                 </a>
               );
             })()}
           </div>
 
-          {/* Minimal, actionable rows */}
           {lead.email && (
             <IconTextRow icon={<Mail className="h-4 w-4" aria-hidden />}>
               <a href={`mailto:${lead.email}`} className="underline underline-offset-2 break-all">{lead.email}</a>
@@ -131,66 +123,77 @@ export default function LeadCard({ lead, onUpdate }: Props) {
           )}
         </div>
 
-        {/* ===== 2) Message (prioritized details) ===== */}
-        <Section title="Message">
-          {/* a) Customer comments/questions FIRST */}
-          {lead.narrative ? (
-            <div className="text-sm text-muted-foreground leading-6 whitespace-pre-wrap">
-              {lead.narrative}
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground italic">No message provided.</div>
-          )}
-
-          {/* b) Vehicle of Interest */}
-          {lead.vehicleOfInterest && (
-            <IconTextRow icon={<CarFront className="h-4 w-4" aria-hidden />}>
-              <span>{lead.vehicleOfInterest}</span>
-            </IconTextRow>
-          )}
-
-          {/* c) Trade-in */}
-          {lead.tradeIn && compactTradeIn(lead.tradeIn) && (
-            <IconTextRow icon={<Repeat className="h-4 w-4" aria-hidden />}>
-              <span>Trade-In: {compactTradeIn(lead.tradeIn)}</span>
-            </IconTextRow>
-          )}
-
-          {/* d) Minimal useful links (short labels) */}
-          <div className="space-y-1 text-xs text-muted-foreground pt-2">
-            {lead.clickPathUrl && (
-              <div className="flex items-center gap-1.5">
-                <Link2 className="h-3.5 w-3.5" aria-hidden />
-                <a href={lead.clickPathUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
-                  {displayUrlLabel(lead.clickPathUrl)}
-                </a>
-              </div>
-            )}
-            {lead.returnShopperUrl && (
-              <div className="flex items-center gap-1.5">
-                <Link2 className="h-3.5 w-3.5" aria-hidden />
-                <a href={lead.returnShopperUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
-                  {displayUrlLabel(lead.returnShopperUrl)}
-                </a>
-              </div>
-            )}
-          </div>
+        {/* 1) COMMENTS / QUESTIONS (first) */}
+        <Section title="Comments / Questions">
+          {lead.narrative
+            ? <div className="text-sm text-muted-foreground leading-6 whitespace-pre-wrap">{lead.narrative}</div>
+            : <div className="text-sm text-muted-foreground italic">No message provided.</div>}
         </Section>
 
-        {/* ===== 3) Form Details (only if present) ===== */}
-        {lead.qa && lead.qa.length > 0 && (
-          <Section title="Form Details">
-            <div className="space-y-2">
-              {lead.qa.map((row, idx) => (
-                <div key={idx} className="rounded-lg border border-border/60 p-2.5">
-                  <div className="text-xs font-semibold tracking-wide">{row.question}</div>
-                  <div className="text-sm text-muted-foreground leading-6">{row.answer}</div>
+        {/* 2) CLICK PATH (short links; supports two or more) */}
+        {nonEmpty(lead.clickPathUrls)?.length ? (
+          <Section title="Click Path">
+            <div className="space-y-1 text-xs text-muted-foreground">
+              {nonEmpty(lead.clickPathUrls).map((u, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <Link2 className="h-3.5 w-3.5" aria-hidden />
+                  <a href={u} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                    {displayUrlLabel(u)}
+                  </a>
                 </div>
               ))}
             </div>
           </Section>
+        ) : null}
+
+        {/* 3) VEHICLE OF INTEREST (headline + details) */}
+        {(lead.vehicleOfInterest || lead.vehicle) && (
+          <Section title="Vehicle of Interest">
+            {lead.vehicleOfInterest && (
+              <IconTextRow icon={<CarFront className="h-4 w-4" aria-hidden />}>
+                <span className="font-medium">{lead.vehicleOfInterest}</span>
+              </IconTextRow>
+            )}
+
+            {lead.vehicle ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 pt-2 text-sm text-muted-foreground">
+                {lead.vehicle.year || lead.vehicle.make || lead.vehicle.model ? (
+                  <div><span className="font-medium text-foreground">Model:</span> {[
+                    lead.vehicle.year, lead.vehicle.make, lead.vehicle.model, lead.vehicle.trim
+                  ].filter(Boolean).join(" ")}</div>
+                ) : null}
+                {lead.vehicle.price ? (
+                  <div><span className="font-medium text-foreground">Price:</span> {lead.vehicle.price}</div>
+                ) : null}
+                {lead.vehicle.stock ? (
+                  <div><span className="font-medium text-foreground">Stock #:</span> {lead.vehicle.stock}</div>
+                ) : null}
+                {lead.vehicle.vin ? (
+                  <div><span className="font-medium text-foreground">VIN:</span> {lead.vehicle.vin}</div>
+                ) : null}
+                {lead.vehicle.exteriorColor ? (
+                  <div><span className="font-medium text-foreground">Ext. Color:</span> {lead.vehicle.exteriorColor}</div>
+                ) : null}
+                {lead.vehicle.interiorColor ? (
+                  <div><span className="font-medium text-foreground">Int. Color:</span> {lead.vehicle.interiorColor}</div>
+                ) : null}
+              </div>
+            ) : null}
+          </Section>
         )}
 
+        {/* 4) TRADE (if present) */}
+        {lead.tradeIn && (
+          <Section title="Trade">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-muted-foreground">
+              <div><span className="font-medium text-foreground">Vehicle:</span> {compactTradeIn(lead.tradeIn)}</div>
+              {lead.tradeIn.trim ? (<div><span className="font-medium text-foreground">Trim:</span> {lead.tradeIn.trim}</div>) : null}
+              {lead.tradeIn.vin ? (<div><span className="font-medium text-foreground">VIN:</span> {lead.tradeIn.vin}</div>) : null}
+              {lead.tradeIn.mileage ? (<div><span className="font-medium text-foreground">Mileage:</span> {lead.tradeIn.mileage}</div>) : null}
+            </div>
+          </Section>
+        )}
+        
         {/* AI Suggestion */}
         {(isAiLoading || lead.suggestion) && (
             <Accordion type="single" collapsible defaultValue={lead.suggestion ? 'item-1' : undefined} className="w-full">
@@ -213,9 +216,9 @@ export default function LeadCard({ lead, onUpdate }: Props) {
             </Accordion>
         )}
 
-        {/* ===== 4) Actions ===== */}
+        {/* Actions */}
         <div className="flex items-center justify-end gap-2 pt-1">
-          {!lead.suggestion && lead.status === 'new' && (
+            {!lead.suggestion && lead.status === 'new' && (
             <Button
                 size="sm"
                 variant="outline"
@@ -226,8 +229,8 @@ export default function LeadCard({ lead, onUpdate }: Props) {
                 <Sparkles className="mr-2 h-4 w-4" />
                 Suggest AI Reply
             </Button>
-          )}
-          {lead.status === 'new' && (
+            )}
+            {lead.status === 'new' && (
             <Button
                 size="sm"
                 className="h-8"
@@ -236,7 +239,7 @@ export default function LeadCard({ lead, onUpdate }: Props) {
                 <Check className="mr-2 h-4 w-4" />
                 Mark as Handled
             </Button>
-          )}
+            )}
         </div>
       </CardContent>
     </Card>
