@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useTransition, useEffect } from 'react';
@@ -18,7 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle, Check, Sparkles, Car, MessageSquare, User, Mail, Phone, HelpCircle, Repeat } from 'lucide-react';
+import { AlertCircle, Check, Sparkles, Car, MessageSquare, Mail, Phone, HelpCircle, Repeat, Link as LinkIcon, Megaphone } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -38,8 +39,8 @@ function InfoLine({ icon: Icon, label, value, href }: { icon: React.ElementType,
     return (
         <div className="flex items-center gap-3 text-sm">
             <Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            <div className="flex-grow">
-                <span className="font-medium">{label}:</span> {content}
+            <div className="flex-grow truncate">
+                <span className="font-medium">{label}:</span> <span className="truncate">{content}</span>
             </div>
         </div>
     );
@@ -63,7 +64,14 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
   const customerName = lead.customerName || "Valued Customer";
   const comments = lead.comments || "No comments provided.";
   
-  const { customer, interest, tradeIn, optionalQuestions } = lead.lead;
+  const { customer, tradeIn, optionalQuestions, marketing } = lead.lead;
+  
+  const shortenUrl = (url: string | null | undefined, maxLength = 30) => {
+    if (!url) return null;
+    if (url.length <= maxLength) return url;
+    return `${url.substring(0, maxLength)}...`;
+  };
+
 
   const handleGenerateSuggestion = () => {
     startAiTransition(async () => {
@@ -124,6 +132,9 @@ export default function LeadCard({ lead, onUpdate }: { lead: Lead; onUpdate: (le
              {tradeIn && (
                  <InfoLine icon={Repeat} label="Trade-In" value={`${tradeIn.year || ''} ${tradeIn.make || ''} ${tradeIn.model || ''}`.trim()} />
              )}
+             <InfoLine icon={Megaphone} label="Campaign" value={marketing.primaryCampaignSource} />
+             <InfoLine icon={LinkIcon} label="Click Path" value={shortenUrl(marketing.clickPathUrl)} href={marketing.clickPathUrl || undefined} />
+
         </div>
 
         {comments && (
