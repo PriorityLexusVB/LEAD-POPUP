@@ -2,81 +2,43 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { type Lead, type LeadStatus, type VehicleDetails, type TradeIn, type QA } from "@/types/lead";
-import type { RawFirestoreLead } from '@/lib/types';
+import { type Lead, type LeadStatus } from "@/types/lead";
 import LeadCard from './LeadCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/api/notification';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, orderBy, DocumentData, updateDoc, doc } from 'firebase/firestore';
 
-// This function converts the raw, nested Firestore data into the clean, flat Lead object for the UI.
 function normalizeFirestoreLead(doc: DocumentData): Lead {
-    const data = doc.data() as RawFirestoreLead;
+    const data = doc.data();
 
-    // The entire structured lead is now inside the `lead` field.
-    const leadData = data.lead; 
+    // Firestore timestamps need to be converted to JS Dates.
+    const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
 
-    const narrative = leadData.comments?.trim() || undefined;
-
-    const clickPaths: string[] = Array.from(new Set([
-        leadData.marketing?.clickPathUrl,
-    ].filter(Boolean))) as string[];
-
-    const vehicle: VehicleDetails = {
-        year: leadData.interest?.year || undefined,
-        make: leadData.interest?.make || undefined,
-        model: leadData.interest?.model || undefined,
-        trim: leadData.interest?.trim || undefined,
-        vin: leadData.interest?.vin || undefined,
-        stock: leadData.interest?.stock || undefined,
-        price: leadData.interest?.price ? `$${leadData.interest.price.toLocaleString()}`: undefined,
-        odometer: leadData.interest?.odometer ? leadData.interest.odometer.toLocaleString() : undefined,
-    };
-    
-    const tradeIn: TradeIn | undefined = leadData.tradeIn ? {
-        year: leadData.tradeIn.year || undefined,
-        make: leadData.tradeIn.make || undefined,
-        model: leadData.tradeIn.model || undefined,
-        trim: leadData.tradeIn.trim || undefined,
-        vin: (leadData.tradeIn as any).vin, // Not a standard field but might exist
-        mileage: leadData.tradeIn.odometer ? leadData.tradeIn.odometer.toLocaleString() : undefined,
-    } : undefined;
-
-    const qa: QA[] = leadData.optionalQuestions?.map(q => ({
-        question: q.question,
-        answer: q.response || q.check || 'Not provided',
-    })) || [];
-    
-    const lowerNarrative = [narrative, leadData.comments].join(' ').toLowerCase();
-    const previousToyotaCustomer = lowerNarrative.includes('previous toyota customer');
-    const previousLexusCustomer = lowerNarrative.includes('previous lexus customer');
-
-    return {
+    const lead: Lead = {
         id: doc.id,
-        createdAt: data.receivedAt ? new Date(data.receivedAt.seconds * 1000) : new Date(data.timestamp),
-        status: data.status,
+        createdAt: createdAt,
+        status: data.status || 'new',
+        customerName: data.customerName || 'Unknown Lead',
+        email: data.email,
+        phone: data.phone,
+        preferredContactMethod: data.preferredContactMethod,
+        narrative: data.narrative,
+        clickPathUrls: data.clickPathUrls || [],
+        vehicleOfInterest: data.vehicleOfInterest,
+        vehicle: data.vehicle,
+        previousToyotaCustomer: data.previousToyotaCustomer,
+        previousLexusCustomer: data.previousLexusCustomer,
+        tradeIn: data.tradeIn,
+        qa: data.qa || [],
+        cdkLeadId: data.cdkLeadId,
+        vendor: data.vendor,
+        subSource: data.subSource,
+        channel: data.channel,
         suggestion: data.suggestion,
-        customerName: data.customerName,
-        
-        narrative,
-        clickPathUrls: clickPaths,
-        
-        vehicleOfInterest: data.vehicleName,
-        vehicle,
-        tradeIn,
-        
-        previousLexusCustomer,
-        previousToyotaCustomer,
-
-        qa,
-
-        email: leadData.customer.email || undefined,
-        phone: leadData.customer.phonePretty || undefined,
-        preferredContactMethod: (leadData.customer as any).preferredContactMethod || undefined,
-        
-        cdkLeadId: leadData.meta.adfId,
     };
+
+    return lead;
 }
 
 
@@ -86,7 +48,8 @@ export default function LeadList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'email_leads'), orderBy('receivedAt', 'desc'));
+    // Note: Reading from 'leads_v2' as per the backend implementation.
+    const q = query(collection(db, 'leads_v2'), orderBy('createdAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const isFirstLoad = leads.length === 0;
@@ -97,7 +60,6 @@ export default function LeadList() {
             const normalizedLead = normalizeFirestoreLead(doc);
             newLeads.push(normalizedLead);
 
-             // Check if it's a genuinely new lead before sending a notification
             const alreadyExists = leads.some(l => l.id === normalizedLead.id);
             if (!isFirstLoad && normalizedLead.status === 'new' && !alreadyExists) {
                 sendNotification({
@@ -120,7 +82,7 @@ export default function LeadList() {
     });
 
     return () => unsubscribe();
-  }, []); // Note: `leads` is intentionally not in the dependency array
+  }, []); // `leads` is intentionally not in the dependency array
 
   useEffect(() => {
     const requestNotificationPermission = async () => {
@@ -138,13 +100,11 @@ export default function LeadList() {
 
   const handleUpdateLead = async (id: string, updates: { status?: LeadStatus; suggestion?: string }) => {
     try {
-        const leadRef = doc(db, 'email_leads', id);
+        const leadRef = doc(db, 'leads_v2', id);
         
         const firestoreUpdates: { [key: string]: any } = {};
         if (updates.status) {
             firestoreUpdates.status = updates.status;
-            // Also update the nested status field for consistency if needed, though the top-level one is primary for the list view
-            firestoreUpdates['lead.status'] = updates.status;
         }
         if (updates.suggestion) {
             firestoreUpdates.suggestion = updates.suggestion;
@@ -155,6 +115,20 @@ export default function LeadList() {
         console.error("Failed to update lead: ", e);
     }
   };
+
+  const handleSuggestReply = async (lead: Lead) => {
+    try {
+      const suggestion = await getAiSuggestion({
+          customerName: lead.customerName,
+          vehicle: lead.vehicleOfInterest || "vehicle",
+          comments: lead.narrative || "No comments provided",
+      });
+      await handleUpdateLead(lead.id, { suggestion });
+    } catch (error) {
+      console.error("Failed to get AI suggestion", error);
+    }
+  };
+
 
   const newLeads = leads.filter(lead => lead.status === 'new');
   const handledLeads = leads.filter(lead => lead.status === 'handled');
@@ -175,7 +149,7 @@ export default function LeadList() {
       <TabsContent value="new" className="pt-4">
         <div className="grid gap-4 md:grid-cols-1">
           {newLeads.length > 0 ? (
-            newLeads.map(lead => <LeadCard key={lead.id} lead={lead} onUpdate={handleUpdateLead} />)
+            newLeads.map(lead => <LeadCard key={lead.id} lead={lead} onSuggestReply={handleSuggestReply} onMarkHandled={(id) => handleUpdateLead(id, { status: 'handled' })} />)
           ) : (
             <div className="col-span-full flex h-64 flex-col items-center justify-center rounded-lg border border-dashed">
               <p className="text-muted-foreground">No new leads. You're all caught up!</p>
@@ -186,7 +160,7 @@ export default function LeadList() {
       <TabsContent value="handled" className="pt-4">
         <div className="grid gap-4 md:grid-cols-1">
           {handledLeads.length > 0 ? (
-             handledLeads.map(lead => <LeadCard key={lead.id} lead={lead} onUpdate={handleUpdateLead} />)
+             handledLeads.map(lead => <LeadCard key={lead.id} lead={lead} onSuggestReply={handleSuggestReply} onMarkHandled={(id) => handleUpdateLead(id, { status: 'handled' })} />)
           ) : (
              <div className="col-span-full flex h-64 flex-col items-center justify-center rounded-lg border border-dashed">
               <p className="text-muted-foreground">No leads have been handled yet.</p>

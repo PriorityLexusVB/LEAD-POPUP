@@ -47,6 +47,11 @@ export type Lead = {
   cdkUrl?: string;
   cdkLeadId?: string;
 
+  // Classification
+  vendor?: string;
+  subSource?: string;
+  channel?: "web" | "chat" | "dr" | "trade" | "finance" | "other";
+
   // New field
   preferredContactMethod?: string;
 };
