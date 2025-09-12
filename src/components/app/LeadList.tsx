@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { type Lead, type LeadStatus, type VehicleDetails, type TradeIn, QA } from "@/types/lead";
+import { type Lead, type LeadStatus, type VehicleDetails, type TradeIn, type QA } from "@/types/lead";
 import type { RawFirestoreLead } from '@/lib/types';
 import LeadCard from './LeadCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -13,12 +13,14 @@ import { collection, onSnapshot, query, orderBy, DocumentData, updateDoc, doc } 
 // This function converts the raw, nested Firestore data into the clean, flat Lead object for the UI.
 function normalizeFirestoreLead(doc: DocumentData): Lead {
     const data = doc.data() as RawFirestoreLead;
-    const leadData = data.lead;
+
+    // The entire structured lead is now inside the `lead` field.
+    const leadData = data.lead; 
 
     const narrative = leadData.comments?.trim() || undefined;
 
     const clickPaths: string[] = Array.from(new Set([
-        leadData.marketing.clickPathUrl,
+        leadData.marketing?.clickPathUrl,
     ].filter(Boolean))) as string[];
 
     const vehicle: VehicleDetails = {
@@ -37,7 +39,7 @@ function normalizeFirestoreLead(doc: DocumentData): Lead {
         make: leadData.tradeIn.make || undefined,
         model: leadData.tradeIn.model || undefined,
         trim: leadData.tradeIn.trim || undefined,
-        vin: (leadData.tradeIn as any).vin, // Not a standard field
+        vin: (leadData.tradeIn as any).vin, // Not a standard field but might exist
         mileage: leadData.tradeIn.odometer ? leadData.tradeIn.odometer.toLocaleString() : undefined,
     } : undefined;
 
@@ -45,8 +47,8 @@ function normalizeFirestoreLead(doc: DocumentData): Lead {
         question: q.question,
         answer: q.response || q.check || 'Not provided',
     })) || [];
-
-    const lowerNarrative = (narrative || '').toLowerCase();
+    
+    const lowerNarrative = [narrative, leadData.comments].join(' ').toLowerCase();
     const previousToyotaCustomer = lowerNarrative.includes('previous toyota customer');
     const previousLexusCustomer = lowerNarrative.includes('previous lexus customer');
 
@@ -71,6 +73,7 @@ function normalizeFirestoreLead(doc: DocumentData): Lead {
 
         email: leadData.customer.email || undefined,
         phone: leadData.customer.phonePretty || undefined,
+        preferredContactMethod: (leadData.customer as any).preferredContactMethod || undefined,
         
         cdkLeadId: leadData.meta.adfId,
     };
@@ -140,6 +143,7 @@ export default function LeadList() {
         const firestoreUpdates: { [key: string]: any } = {};
         if (updates.status) {
             firestoreUpdates.status = updates.status;
+            // Also update the nested status field for consistency if needed, though the top-level one is primary for the list view
             firestoreUpdates['lead.status'] = updates.status;
         }
         if (updates.suggestion) {
@@ -193,5 +197,3 @@ export default function LeadList() {
     </Tabs>
   );
 }
-
-    
