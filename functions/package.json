@@ -4,8 +4,17 @@
   "engines": {
     "node": "20"
   },
-  "main": "index.js",
+  "main": "dist/index.js",
   "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
   "dependencies": {
     "date-fns": "^4.1.0",
     "fast-xml-parser": "^4.5.3",
@@ -13,5 +22,8 @@
     "firebase-functions": "^5.1.1",
     "mailparser": "^3.7.4",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
   }
 }
