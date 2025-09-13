@@ -21,7 +21,7 @@ const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
   ignoreUndefinedProperties: true,
   cacheSizeBytes: CACHE_SIZE_UNLIMITED,
-});
+}, 'leads');
 
 
 export { db };
