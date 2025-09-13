@@ -38,13 +38,21 @@ next-env.d.ts
 
 # Firebase
 .firebase/
-*.log
+.firebaserc
+firebase-debug.log
 dataconnect-debug.log
-.modified
-functions/node_modules/
-electron-app/node_modules/
-electron-app/dist/
-src-tauri/target/
 
 # IDX
 .idx/
+
+# Logs
+**/*.log
+
+# Unwanted directories
+/electron-app/node_modules/
+/functions/node_modules/
+/src-tauri/target/
+/electron-app/dist/
+
+# Other
+.modified

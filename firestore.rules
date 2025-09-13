@@ -1,13 +1,15 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Read: staff only (Google sign-in; allowlist by email domain).
+    // Deny all client access. Reads happen via a secure API route.
+    // Writes happen via Cloud Functions (ingest) or Admin SDK (actions).
     match /leads_v2/{id} {
-      allow read: if request.auth != null &&
-                  request.auth.token.email.matches('.*@priorityautomotive\\.com$');
-      // Writes come from backend only (Admin SDK / Cloud Functions)
+      allow read: if false;
       allow write: if false;
     }
-    match /{document=**} { allow read, write: if false; }
+    // Default deny all other collections.
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }

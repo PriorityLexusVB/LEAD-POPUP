@@ -1,7 +1,32 @@
 import LeadList from "@/components/app/LeadList";
 import { Mail } from 'lucide-react';
+import type { Lead } from "@/types/lead";
 
-export default function Home() {
+async function getLeads(): Promise<Lead[]> {
+  try {
+    // This fetch needs to be aligned with where the app is hosted.
+    // For local dev, this assumes the app is running on localhost:3000.
+    // In production, this URL needs to be the deployed App Hosting URL.
+    // Using a relative URL is the most robust approach.
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || '';
+    const response = await fetch(`${baseUrl}/api/leads`, { cache: 'no-store' });
+
+    if (!response.ok) {
+      console.error('Failed to fetch leads:', response.statusText);
+      return [];
+    }
+    const data = await response.json();
+    return data.items || [];
+  } catch (error) {
+    console.error('Error fetching leads:', error);
+    return [];
+  }
+}
+
+
+export default async function Home() {
+  const initialLeads = await getLeads();
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-sm">
@@ -17,7 +42,7 @@ export default function Home() {
         </div>
       </header>
       <main className="container mx-auto max-w-4xl p-4">
-        <LeadList />
+        <LeadList initialLeads={initialLeads} />
       </main>
     </div>
   );
