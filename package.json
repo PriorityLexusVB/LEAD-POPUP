@@ -3,16 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "electron-app",
-    "functions",
-    "lead-pop-up"
+    "functions"
   ],
   "scripts": {
     "dev": "next dev",
     "web": "next dev -p 9002 -H 0.0.0.0",
     "build": "next build",
-    "start": "next start",
-    "tauri": "npm run tauri -w electron-app"
+    "start": "next start"
   },
   "dependencies": {
     "next": "^14.2.5",
