@@ -1,8 +1,9 @@
 'use server';
 
 import type { GenerateAiSuggestionsForLeadInput } from '@/ai/flows/generate-ai-suggestions-for-lead';
-import { db } from '@/lib/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { adminDb } from '@/lib/firebaseAdmin';
+import { FieldValue } from 'firebase-admin/firestore';
+
 
 export async function getAiSuggestion(input: GenerateAiSuggestionsForLeadInput): Promise<string> {
   try {
@@ -18,8 +19,10 @@ export async function getAiSuggestion(input: GenerateAiSuggestionsForLeadInput):
 
 export async function setLeadStatus(id: string, status: 'new' | 'handled') {
     try {
-        const leadRef = doc(db, 'leads_v2', id);
-        await updateDoc(leadRef, { status });
+        await adminDb.collection('leads_v2').doc(id).set({
+            status,
+            updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
     } catch (e) {
         console.error("Failed to update lead status: ", e);
         throw new Error("Failed to update lead status.");
