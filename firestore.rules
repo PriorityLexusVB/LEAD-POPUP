@@ -2,25 +2,23 @@
 rules_version = '2';
 
 service cloud.firestore {
-  // Rule for the default database
+  // Lock down the default database
   match /databases/(default)/documents {
-    // Default-deny all access to the default database
     match /{document=**} {
       allow read, write: if false;
     }
   }
 
-  // Rule for the 'leads' database
+  // Explicitly open read access for the 'leads' database
   match /databases/leads/documents {
-    // Allow reads on the leads_v2 collection
+    // Allow client-side read access to the leads_v2 collection
     match /leads_v2/{leadId} {
       allow read: if true;
-      allow write: if false; // Disallow client-side writes
+      allow write: if false;
     }
-
-    // Deny access to all other collections in the 'leads' database
+    // Deny access to any other collections in the 'leads' database
     match /{path=**}/documents/{document} {
-      allow read, write: if false;
+        allow read, write: if false;
     }
   }
 }
