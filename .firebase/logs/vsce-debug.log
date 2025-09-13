@@ -11413,3 +11413,4 @@ E0913 15:09:27.161018    6376 watch.go:102] watchAllDir unable to walk dir `/hom
  {"metadata":{"emulator":{"name":"dataconnect"},"message":"E0913 15:10:57.162159    6376 watch.go:31] Failed to load config from \"/home/user/studio/dataconnect\": could not find dataconnect.yaml in `/home/user/studio/dataconnect`\n"}}
 [info] [Firebase Plugin] Stopping Data Connect toolkit
 [warn] ⚠  Data Connect Emulator has exited upon receiving signal: SIGINT 
+[debug] [2025-09-13T17:54:32.416Z] [Firebase Plugin] Activating Firebase extension.
