@@ -4,7 +4,7 @@ import path from "node:path";
 
 // Try to be friendly to remote dev/proxies (Cloud Workstations, Codespaces, etc.)
 const host = true;               // bind 0.0.0.0
-const port = 5173;
+const port = 9002;
 const strictPort = true;
 
 export default defineConfig({
