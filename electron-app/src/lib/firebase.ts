@@ -1,36 +1,37 @@
 import { initializeApp, getApps } from "firebase/app";
 import { initializeFirestore, getFirestore } from "firebase/firestore";
+import { readEnv } from "./env";
 
-const cfg = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
-};
+const e = readEnv();
 
-if (!cfg.projectId || !cfg.apiKey) {
-  if (import.meta.env.DEV) console.error("[firebase] Missing VITE_FIREBASE_* env in electron-app/.env");
+if (!e.projectId || !e.apiKey) {
+  if (typeof window !== "undefined") {
+    console.error("[firebase] Missing env vars. Check electron-app/.env (Vite) or NEXT_PUBLIC_* (Next).");
+  }
 }
 
-export const app = getApps().length ? getApps()[0] : initializeApp(cfg);
+export const app = getApps().length ? getApps()[0] : initializeApp({
+  apiKey: e.apiKey,
+  authDomain: e.authDomain,
+  projectId: e.projectId,
+  storageBucket: e.storageBucket,
+  messagingSenderId: e.messagingSenderId,
+  appId: e.appId,
+  measurementId: e.measurementId,
+});
 
 export const db = (() => {
   try {
     const db = initializeFirestore(app, {
       experimentalForceLongPolling: true,
-      // @ts-expect-error: allowed at runtime
+      // @ts-expect-error supported at runtime
       useFetchStreams: false,
-      // @ts-expect-error: allowed at runtime
+      // @ts-expect-error supported at runtime
       longPollingOptions: { timeoutSeconds: 10 },
       ignoreUndefinedProperties: true,
     } as any);
-    if (import.meta.env.DEV) console.info("[firestore] long-polling transport enabled");
     return db;
-  } catch (e) {
-    if (import.meta.env.DEV) console.warn("[firestore] initializeFirestore failed; fallback getFirestore()", e);
+  } catch {
     return getFirestore(app);
   }
 })();
