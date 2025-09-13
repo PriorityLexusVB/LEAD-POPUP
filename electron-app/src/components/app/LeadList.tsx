@@ -4,7 +4,6 @@ import {
   collection, query, orderBy, limit,
   onSnapshot, getDocs, Unsubscribe
 } from "firebase/firestore";
-// import LeadCard from "./LeadCard"; // uncomment when you’ve got LeadCard ready
 
 type Lead = any;
 
@@ -55,12 +54,10 @@ export default function LeadList() {
       return () => { if (timer) clearInterval(timer); };
     }
 
-    // Realtime with auto-fallback
     unsub = onSnapshot(
       q,
-      (snap) => { 
+      (snap) => {
         if (snap.empty) {
-          // Fallback query if createdAtMs is not present on some documents
           getDocs(query(col, orderBy("createdAt", "desc"), limit(100)))
             .then(s2 => apply(s2.docs))
             .catch(e => {
@@ -69,8 +66,8 @@ export default function LeadList() {
             });
           return;
         }
-        apply(snap.docs); 
-        setMode("realtime"); 
+        apply(snap.docs);
+        setMode("realtime");
       },
       (e) => {
         console.warn("[firestore] onSnapshot error; falling back to polling", e);

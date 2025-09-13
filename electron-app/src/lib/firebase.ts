@@ -1,4 +1,3 @@
-// electron-app/src/lib/firebase.ts
 import { initializeApp, getApps } from "firebase/app";
 import { initializeFirestore, getFirestore } from "firebase/firestore";
 
@@ -22,13 +21,13 @@ export const db = (() => {
   try {
     const db = initializeFirestore(app, {
       experimentalForceLongPolling: true,
-      // @ts-expect-error supported at runtime
+      // @ts-expect-error: allowed at runtime
       useFetchStreams: false,
-      // @ts-expect-error supported at runtime
+      // @ts-expect-error: allowed at runtime
       longPollingOptions: { timeoutSeconds: 10 },
       ignoreUndefinedProperties: true,
     } as any);
-    if (import.meta.env.DEV) console.info("[firestore] long-polling mode");
+    if (import.meta.env.DEV) console.info("[firestore] long-polling transport enabled");
     return db;
   } catch (e) {
     if (import.meta.env.DEV) console.warn("[firestore] initializeFirestore failed; fallback getFirestore()", e);

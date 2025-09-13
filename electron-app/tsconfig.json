@@ -16,14 +16,8 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
-    "paths": {
-      "@/*": [
-        "src/*"
-      ]
-    },
-    "types": [
-      "vite/client"
-    ]
+    "paths": { "@/*": ["src/*"] },
+    "types": ["vite/client"]
   },
   "include": [
     "src"
