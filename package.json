@@ -3,14 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "lead-pop-up",
-    "functions"
+    "electron-app",
+    "functions",
+    "lead-pop-up"
   ],
   "scripts": {
-    "dev": "npm run web",
-    "web": "npm run dev -w lead-pop-up -- --port 9002 --host 0.0.0.0",
-    "build": "npm run build -w lead-pop-up && npm run build -w functions",
-    "start": "npm run start -w lead-pop-up",
-    "tauri": "npm run tauri -w lead-pop-up"
+    "dev": "next dev",
+    "web": "next dev -p 9002 -H 0.0.0.0",
+    "build": "next build",
+    "start": "next start",
+    "tauri": "npm run tauri -w electron-app"
+  },
+  "dependencies": {
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
 }

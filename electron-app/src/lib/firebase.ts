@@ -10,7 +10,7 @@ if (!e.projectId || !e.apiKey) {
   }
 }
 
-export const app = getApps().length ? getApps()[0] : initializeApp({
+const firebaseConfig = {
   apiKey: e.apiKey,
   authDomain: e.authDomain,
   projectId: e.projectId,
@@ -18,7 +18,9 @@ export const app = getApps().length ? getApps()[0] : initializeApp({
   messagingSenderId: e.messagingSenderId,
   appId: e.appId,
   measurementId: e.measurementId,
-});
+};
+
+export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
 export const db = (() => {
   try {
