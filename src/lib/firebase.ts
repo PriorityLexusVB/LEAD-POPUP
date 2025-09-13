@@ -1,5 +1,5 @@
-import { initializeApp, getApps } from "firebase/app";
-import { initializeFirestore, getFirestore } from "firebase/firestore";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -17,20 +17,6 @@ if (!firebaseConfig.projectId || !firebaseConfig.apiKey) {
   }
 }
 
-export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-export const db = (() => {
-  try {
-    const db = initializeFirestore(app, {
-      experimentalForceLongPolling: true,
-      // @ts-expect-error supported at runtime
-      useFetchStreams: false,
-      // @ts-expect-error supported at runtime
-      longPollingOptions: { timeoutSeconds: 10 },
-      ignoreUndefinedProperties: true,
-    } as any);
-    return db;
-  } catch {
-    return getFirestore(app);
-  }
-})();
+export const db = getFirestore(app);
