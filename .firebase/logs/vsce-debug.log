@@ -10455,3 +10455,4 @@ E0912 23:49:15.681022   70446 watch.go:102] watchAllDir unable to walk dir `/hom
  {"metadata":{"emulator":{"name":"dataconnect"},"message":"E0912 23:53:15.681228   70446 watch.go:102] watchAllDir unable to walk dir `/home/user/studio/dataconnect`: lstat /home/user/studio/dataconnect: no such file or directory\n"}}
 [debug] [2025-09-12T23:53:25.681Z] E0912 23:53:25.680991   70446 watch.go:31] Failed to load config from "/home/user/studio/dataconnect": could not find dataconnect.yaml in `/home/user/studio/dataconnect`
  {"metadata":{"emulator":{"name":"dataconnect"},"message":"E0912 23:53:25.680991   70446 watch.go:31] Failed to load config from \"/home/user/studio/dataconnect\": could not find dataconnect.yaml in `/home/user/studio/dataconnect`\n"}}
+[debug] [2025-09-13T13:39:17.163Z] [Firebase Plugin] Activating Firebase extension.

@@ -1,6 +1,6 @@
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
 
 // This is the correct configuration for your project.
 const firebaseConfig = {
@@ -16,7 +16,12 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// Connect to the 'leads' database instance.
-const db = getFirestore(app, 'leads');
+// Connect to the 'leads' database instance with robust connection settings.
+const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+  ignoreUndefinedProperties: true,
+  cacheSizeBytes: CACHE_SIZE_UNLIMITED,
+});
+
 
 export { db };
