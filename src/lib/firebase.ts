@@ -1,27 +1,43 @@
 
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, initializeFirestore, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
+// electron-app/src/lib/firebase.ts
+import { initializeApp, getApps } from "firebase/app";
+import { initializeFirestore, getFirestore } from "firebase/firestore";
 
-// This is the correct configuration for your project.
-const firebaseConfig = {
-  "projectId": "priority-lead-sync-jts63",
-  "appId": "1:27409891046:web:6816fad326e6f7b0c28527",
-  "storageBucket": "priority-lead-sync-jts63.appspot.com",
-  "apiKey": "AIzaSyACeCULtIczV2Jb7rdbYctDY82FaB2GTsA",
-  "authDomain": "priority-lead-sync-jts63.firebaseapp.com",
-  "messagingSenderId": "27409891046"
+const cfg = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
+if (!cfg.projectId || !cfg.apiKey) {
+  if (import.meta.env.DEV) console.error("[firebase] Missing VITE_FIREBASE_* env in electron-app/.env");
+}
 
-// Initialize Firebase
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+export const app = getApps().length ? getApps()[0] : initializeApp(cfg);
 
-// Connect to the 'leads' database instance with robust connection settings.
-const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
-  ignoreUndefinedProperties: true,
-  cacheSizeBytes: CACHE_SIZE_UNLIMITED,
-}, 'leads');
-
-
-export { db };
+// Force transports that work in Electron/proxied networks.
+// - experimentalForceLongPolling: true  → use long-poll instead of streaming
+// - useFetchStreams: false              → avoid fetch streaming (often blocked)
+// - longPollingOptions.timeoutSeconds   → shorter server hang time if proxies buffer
+export const db = (() => {
+  try {
+    const db = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+      // @ts-expect-error: older typings may not include this flag, runtime supports it
+      useFetchStreams: false,
+      // @ts-expect-error: older typings may not include this option
+      longPollingOptions: { timeoutSeconds: 10 },
+      ignoreUndefinedProperties: true,
+    } as any);
+    if (import.meta.env.DEV) console.info("[firestore] using forced long-polling transport");
+    return db;
+  } catch {
+    // Fallback for older SDKs
+    if (import.meta.env.DEV) console.warn("[firestore] initializeFirestore failed; falling back to getFirestore()");
+    return getFirestore(app);
+  }
+})();
