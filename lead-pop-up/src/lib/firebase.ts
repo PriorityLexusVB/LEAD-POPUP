@@ -7,7 +7,7 @@ const e = readEnv();
 
 if (!e.projectId || !e.apiKey) {
   if (typeof window !== "undefined") {
-    console.error("[firebase] Missing env vars. Check .env (Vite) or NEXT_PUBLIC_* (Next).");
+    console.error("[firebase] Missing env vars. Check lead-pop-up/.env (Vite) or NEXT_PUBLIC_* (Next).");
   }
 }
 
