@@ -75,7 +75,7 @@ export const receiveEmailLead = functions.runWith(FN_OPTS).https.onRequest(async
 
     const providerName = (/\<provider\>[\s\S]*?\<name[^>]*\>([\s\S]*?)\<\/name\>/.exec(raw)?.[1])?.trim();
     const providerService = (/\<provider\>[\s\S]*?\<service[^>]*\>([\s\S]*?)\<\/service\>/.exec(raw)?.[1])?.trim();
-    const providerUrl = (/\<provider\>[\s\S]*?\<url[^>]*\>([\s\S]*?)\<\/url\>/.exec(raw)?.[1])?.trim();
+    const providerUrl = (/\<provider\>[\s\S]*?\<url[^>]*\>([\s_S]*?)\<\/url\>/.exec(raw)?.[1])?.trim();
     const starSenderName = (/\<SenderNameCode\>([^<]+)\<\/SenderNameCode\>/.exec(raw)?.[1])?.trim();
     const starCreator = (/\<CreatorNameCode\>([^<]+)\<\/CreatorNameCode\>/.exec(raw)?.[1])?.trim();
 

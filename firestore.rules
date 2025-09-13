@@ -4,7 +4,7 @@ service cloud.firestore {
     // Read: staff only (Google sign-in; allowlist by email domain).
     match /leads_v2/{id} {
       allow read: if request.auth != null &&
-                  request.auth.token.email.matches('.*@priorityauto\\.com$');
+                  request.auth.token.email.matches('.*@priorityautomotive\\.com$');
       // Writes come from backend only (Admin SDK / Cloud Functions)
       allow write: if false;
     }
