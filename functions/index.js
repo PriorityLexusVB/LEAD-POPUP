@@ -5,9 +5,9 @@ const { simpleParser } = require('mailparser');
 const { normalizeAny } = require('./normalizers/adf');
 const { looksLikeChatLead, normalizeChatPlain } = require('./normalizers/chat');
 const { classifyLeadSource } = require('./ingest/classify');
+const { firestore } = require('./firebase');
 
-admin.initializeApp();
-const db = admin.firestore();
+const db = firestore;
 
 const FN_OPTS = {
   region: 'us-central1',
@@ -68,7 +68,7 @@ exports.receiveEmailLead = functions.runWith(FN_OPTS).https.onRequest(async (req
         subject, 
         from, 
         receivedAt: new Date(), 
-        snippet: raw.slice(0, 2000) 
+        snippet: raw.slice(0, 4000) 
       });
       return res.status(202).send("accepted_unparsed");
     }
@@ -85,10 +85,15 @@ exports.receiveEmailLead = functions.runWith(FN_OPTS).https.onRequest(async (req
       starSenderName, starCreator,
     });
     
-    // Ensure `createdAt` is a Firestore-compatible timestamp
+    const createdAtDate = new Date(classified.createdAt);
+    const createdAtMs = createdAtDate.getTime();
+    const createdAtISO = createdAtDate.toISOString();
+
     const finalPayload = {
       ...classified,
-      createdAt: admin.firestore.Timestamp.fromDate(new Date(classified.createdAt)),
+      createdAtMs,
+      createdAtISO,
+      createdAt: admin.firestore.Timestamp.fromDate(createdAtDate),
       receivedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 

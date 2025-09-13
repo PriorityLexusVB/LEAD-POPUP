@@ -16,6 +16,8 @@ export type TradeIn = {
 export type Lead = {
   id: string;
   createdAt: string | number | Date;
+  createdAtMs?: number;
+  createdAtISO?: string;
   status: LeadStatus;
 
   customerName: string;

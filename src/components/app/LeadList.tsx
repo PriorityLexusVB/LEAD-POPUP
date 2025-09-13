@@ -1,88 +1,63 @@
-
-'use client';
-
-import { useState, useEffect } from 'react';
-import { type Lead, type LeadStatus } from "@/types/lead";
-import LeadCard from './LeadCard';
+"use client";
+import { useEffect, useState } from "react";
+import { db } from "@/lib/firebase";
+import { collection, query, orderBy, limit, onSnapshot, getDocs } from "firebase/firestore";
+import LeadCard from "./LeadCard"; // ensure path
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/api/notification';
-import { db } from '@/lib/firebase';
-import { collection, onSnapshot, query, orderBy, DocumentData, updateDoc, doc } from 'firebase/firestore';
-
-function normalizeFirestoreLead(doc: DocumentData): Lead {
-    const data = doc.data();
-
-    // Firestore timestamps need to be converted to JS Dates.
-    const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
-
-    const lead: Lead = {
-        id: doc.id,
-        createdAt: createdAt,
-        status: data.status || 'new',
-        customerName: data.customerName || 'Unknown Lead',
-        email: data.email,
-        phone: data.phone,
-        preferredContactMethod: data.preferredContactMethod,
-        narrative: data.narrative,
-        clickPathUrls: data.clickPathUrls || [],
-        vehicleOfInterest: data.vehicleOfInterest,
-        vehicle: data.vehicle,
-        previousToyotaCustomer: data.previousToyotaCustomer,
-        previousLexusCustomer: data.previousLexusCustomer,
-        tradeIn: data.tradeIn,
-        qa: data.qa || [],
-        cdkLeadId: data.cdkLeadId,
-        vendor: data.vendor,
-        subSource: data.subSource,
-        channel: data.channel,
-        suggestion: data.suggestion,
-    };
-
-    return lead;
-}
-
+import type { Lead } from "@/types/lead";
+import { getAiSuggestion } from "@/app/actions";
+import { doc, updateDoc } from "firebase/firestore";
 
 export default function LeadList() {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Note: Reading from 'leads_v2' as per the backend implementation.
-    const q = query(collection(db, 'leads_v2'), orderBy('createdAt', 'desc'));
+    const col = collection(db, "leads_v2");
+    const q = query(col, orderBy("createdAtMs", "desc"), limit(100));
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const isFirstLoad = leads.length === 0;
-      const newLeads: Lead[] = [];
-
-      querySnapshot.forEach((doc) => {
-        try {
-            const normalizedLead = normalizeFirestoreLead(doc);
-            newLeads.push(normalizedLead);
-
-            const alreadyExists = leads.some(l => l.id === normalizedLead.id);
-            if (!isFirstLoad && normalizedLead.status === 'new' && !alreadyExists) {
-                sendNotification({
-                    title: `New Lead: ${normalizedLead.customerName}`,
-                    body: `Interested in: ${normalizedLead.vehicleOfInterest || 'Not specified'}`,
-                });
-            }
-        } catch (e) {
-            console.error("Failed to normalize lead document:", doc.id, e);
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        if (snap.empty) {
+          // Fallback query
+          getDocs(query(col, orderBy("createdAt", "desc"), limit(100)))
+            .then(s2 => {
+              const newLeads = s2.docs.map(d => ({ id: d.id, ...d.data() } as Lead));
+              setLeads(newLeads);
+              setLoading(false);
+            })
+            .catch(e => {
+              setErr(e.message);
+              setLoading(false);
+            });
+          return;
         }
-      });
-      
-      setLeads(newLeads);
-      setLoading(false);
-      setError(null);
-    }, (err) => {
-      console.error("Error fetching leads from Firestore: ", err);
-      setError(`Failed to connect to Firestore. Please check your connection and Firebase security rules.`);
-      setLoading(false);
-    });
+        const newLeads = snap.docs.map(d => ({ id: d.id, ...d.data() } as Lead));
+        const isFirstLoad = leads.length === 0;
 
-    return () => unsubscribe();
-  }, []); // `leads` is intentionally not in the dependency array
+        newLeads.forEach(newLead => {
+          const alreadyExists = leads.some(l => l.id === newLead.id);
+          if (!isFirstLoad && newLead.status === 'new' && !alreadyExists) {
+              sendNotification({
+                  title: `New Lead: ${newLead.customerName}`,
+                  body: `Interested in: ${newLead.vehicleOfInterest || 'Not specified'}`,
+              });
+          }
+        });
+        
+        setLeads(newLeads);
+        setLoading(false);
+      },
+      (e) => {
+        setErr(e.message);
+        setLoading(false);
+      }
+    );
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const requestNotificationPermission = async () => {
@@ -98,7 +73,7 @@ export default function LeadList() {
     requestNotificationPermission();
   }, []);
 
-  const handleUpdateLead = async (id: string, updates: { status?: LeadStatus; suggestion?: string }) => {
+  const handleUpdateLead = async (id: string, updates: { status?: "new" | "handled"; suggestion?: string }) => {
     try {
         const leadRef = doc(db, 'leads_v2', id);
         
@@ -106,13 +81,14 @@ export default function LeadList() {
         if (updates.status) {
             firestoreUpdates.status = updates.status;
         }
-        if (updates.suggestion) {
+        if (updates.suggestion !== undefined) {
             firestoreUpdates.suggestion = updates.suggestion;
         }
         
         await updateDoc(leadRef, firestoreUpdates);
     } catch(e) {
         console.error("Failed to update lead: ", e);
+        setErr(e.message);
     }
   };
 
@@ -124,21 +100,17 @@ export default function LeadList() {
           comments: lead.narrative || "No comments provided",
       });
       await handleUpdateLead(lead.id, { suggestion });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to get AI suggestion", error);
+      setErr(error.message);
     }
   };
 
+  if (err) return <div className="p-4 text-sm text-red-600">Firestore error: {err}</div>;
+  if (loading) return <div className="text-center text-muted-foreground p-8">Loading leads...</div>;
 
   const newLeads = leads.filter(lead => lead.status === 'new');
   const handledLeads = leads.filter(lead => lead.status === 'handled');
-  
-  if (loading) {
-    return <div className="text-center text-muted-foreground p-8">Loading leads...</div>;
-  }
-  if (error) {
-    return <div className="col-span-full flex h-64 flex-col items-center justify-center rounded-lg border border-dashed"><p className="text-destructive">{error}</p></div>
-  }
 
   return (
     <Tabs defaultValue="new" className="w-full">

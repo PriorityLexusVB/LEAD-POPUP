@@ -1,4 +1,3 @@
-
 import LeadList from "@/components/app/LeadList";
 import { Mail } from 'lucide-react';
 
