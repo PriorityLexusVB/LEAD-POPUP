@@ -19,7 +19,7 @@ export function normalizeChatPlain(opts: {
   text: string;
   receivedAt?: string | number | Date;
 }): Lead | null {
-  const { msgId, subject, text, receivedAt } = opts;
+  const { msgId, text, receivedAt } = opts;
   if (!text) return null;
 
   const urls = dedupe(Array.from(text.matchAll(/https?:\/\/\S+/g)).map(m => m[0]));

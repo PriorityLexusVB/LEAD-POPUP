@@ -12,7 +12,7 @@ const db = firestore;
 const FN_OPTS = {
   region: 'us-central1',
   secrets: ['GMAIL_WEBHOOK_SECRET'],
-  memory: '256MiB',
+  memory: '256MB' as const,
   timeoutSeconds: 120,
 };
 
@@ -33,14 +33,16 @@ export const receiveEmailLead = functions.runWith(FN_OPTS).https.onRequest(async
     const expectedSecret = process.env.GMAIL_WEBHOOK_SECRET;
     if (providedSecret !== expectedSecret) {
       logger.warn('unauthorized webhook attempt');
-      return res.status(401).json({ ok: false, error: 'unauthorized' });
+      res.status(401).json({ ok: false, error: 'unauthorized' });
+      return;
     }
 
     const rawBodyStr = (typeof req.body === 'string') ? req.body :
                        (Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : '');
 
     if (!rawBodyStr) {
-      return res.status(400).json({ ok: false, error: 'missing_body' });
+      res.status(400).json({ ok: false, error: 'missing_body' });
+      return;
     }
 
     const rfc822 = base64UrlToUtf8(rawBodyStr);
@@ -70,7 +72,8 @@ export const receiveEmailLead = functions.runWith(FN_OPTS).https.onRequest(async
         receivedAt: new Date(), 
         snippet: raw.slice(0, 4000) 
       });
-      return res.status(202).send("accepted_unparsed");
+      res.status(202).send("accepted_unparsed");
+      return;
     }
 
     const providerName = (/\<provider\>[\s\S]*?\<name[^>]*\>([\s\S]*?)\<\/name\>/.exec(raw)?.[1])?.trim();
@@ -100,7 +103,7 @@ export const receiveEmailLead = functions.runWith(FN_OPTS).https.onRequest(async
     await db.collection("leads_v2").doc(classified.id).set(finalPayload, { merge: true });
 
     logger.info(`Successfully parsed and saved lead: ${classified.id} from ${classified.vendor}`);
-    return res.status(200).send("ok");
+    res.status(200).send("ok");
 
   } catch (err: any) {
     logger.error('receiveEmailLead_uncaught', {
@@ -108,6 +111,6 @@ export const receiveEmailLead = functions.runWith(FN_OPTS).https.onRequest(async
       stack: err.stack,
       body: req.body
     });
-    return res.status(500).json({ ok: false, error: 'internal_error' });
+    res.status(500).json({ ok: false, error: 'internal_error' });
   }
 });
