@@ -51,6 +51,7 @@ dataconnect-debug.log
 # Unwanted directories
 /electron-app/node_modules/
 /functions/node_modules/
+/functions/dist/
 /src-tauri/target/
 /electron-app/dist/
 
